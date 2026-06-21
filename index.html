@@ -95,6 +95,7 @@ const Audio = (()=>{
   function whoosh(){ if(!sfxOn)return; noise(0.35,0.18,null,400); }
   function shoot(){ if(!sfxOn)return; tone(1500+Math.random()*260,0.045,'square',0.045,-760); }   // ufak "pew"
   function hit2(){ if(!sfxOn)return; noise(0.14,0.34); tone(190,0.16,'sawtooth',0.2,-90); }          // tehlike patladı
+  function deflect(){ if(!sfxOn)return; tone(2600,0.04,'square',0.05,-500); noise(0.05,0.09,null,5200); } // mermi mayından sekti
   function kick(){ if(!ctxA||!musicOn)return; const o=ctxA.createOscillator(),g=ctxA.createGain();
     o.type='sine'; o.frequency.setValueAtTime(150,ctxA.currentTime); o.frequency.exponentialRampToValueAtTime(46,ctxA.currentTime+0.11);
     g.gain.setValueAtTime(0.55,ctxA.currentTime); g.gain.exponentialRampToValueAtTime(0.001,ctxA.currentTime+0.16);
@@ -122,7 +123,7 @@ const Audio = (()=>{
   }
   function setSfx(b){ sfxOn=b; }
   function setMusic(b){ musicOn=b; if(ctxA&&musicGain&&!b) musicGain.gain.setTargetAtTime(0,ctxA.currentTime,0.15); }
-  return {resume,collect,gold,miss,hit,milestone,record,tap,whoosh,tick,setSfx,setMusic,shoot,hit2};
+  return {resume,collect,gold,miss,hit,milestone,record,tap,whoosh,tick,setSfx,setMusic,shoot,hit2,deflect};
 })();
 
 /* ===================== HAVUZLAR ===================== */
@@ -144,7 +145,7 @@ function spark(){ // arka plan yıldız tozu (menü/splash)
 const ST={SPLASH:0,MENU:1,SETTINGS:2,PLAY:3,OVER:4,PAUSE:5};
 let state=ST.SPLASH, t=0, stateT=0;
 let score=0,displayScore=0,combo=1,bestCombo=1,elapsed=0,spawnTimer=0,difficulty=0;
-let level=1,levelBase=0,levelGoal=300,levelUpT=0;            // AŞAMA sistemi
+let level=1,levelBase=0,levelGoal=300,levelUpT=0,mineSeen=false;   // AŞAMA + vurulamaz mayın
 let best=+localStorage.getItem('nc_best')||0, bestC=+localStorage.getItem('nc_bestc')||0, newRecord=false;
 let bestStage=+localStorage.getItem('nc_beststage')||1;
 let shake=0,flash=0,flashColor='255,255,255',zoom=1,zoomT=1,hitstop=0,bgPulse=0,hue=190;
@@ -156,7 +157,7 @@ resize();
 function goto(s){ stateT=0; state=s; }
 function reset(){ particles.clear();fallers.clear();popups.clear();bullets.clear();
   score=0;displayScore=0;combo=1;bestCombo=1;elapsed=0;spawnTimer=0;difficulty=0;newRecord=false;
-  level=1;levelBase=0;levelGoal=goalFor(1);levelUpT=0;
+  level=1;levelBase=0;levelGoal=goalFor(1);levelUpT=0;mineSeen=false;
   player.x=player.tx=pointerX=W/2; player.y=H-Math.max(110,H*0.16); player.trail.length=0;
   shake=0;flash=0;zoom=1;zoomT=1;hitstop=0;fireTimer=0;muzzle=0; }
 function startGame(){ Audio.resume(); reset(); goto(ST.PLAY); }
@@ -214,7 +215,13 @@ cv.addEventListener('touchmove', e=>e.preventDefault(), {passive:false});
 /* ===================== SPAWN ===================== */
 function spawn(){ const f=fallers.spawn(); f.x=rand(40,W-40);f.y=-30;f.r=rand(16,22);f.t=0;f.spin=rand(0,6.28);f.dead=false;
   const haz=clamp(0.18+difficulty*0.18,0.18,0.46), roll=Math.random();
-  f.kind = roll<0.05?'gold' : roll<0.05+haz?'hazard':'orb';
+  if(roll<0.05) f.kind='gold';
+  else if(roll<0.05+haz){
+    // tehlikelerin bir kısmı VURULAMAZ "mayın" (zorlukla artar) → mermi sekti, KAÇMAK şart
+    f.kind = Math.random() < clamp(0.20+difficulty*0.28,0.20,0.55) ? 'mine' : 'hazard';
+    if(f.kind==='mine' && !mineSeen){ mineSeen=true; popup(W/2,H*0.32,'VURULAMAZ — KAÇ!','255,180,110',true); }
+  }
+  else f.kind='orb';
   if(f.kind==='gold')f.r=20; f.vy=rand(180,230)+difficulty*150; }
 
 /* ===================== UPDATE ===================== */
@@ -251,6 +258,7 @@ function update(dt){
     if(b.y<-24) return false;
     for(const f of fallers.list){ if(f.dead) continue;
       if(Math.hypot(f.x-b.x, f.y-b.y) < f.r+5){
+        if(f.kind==='mine'){ burst(b.x,b.y,'205,215,235',7,280,0.35); Audio.deflect(); return false; } // sekti, mayın yaşıyor
         if(f.kind==='hazard') destroyHazard(f); else collectFaller(f);
         f.dead=true; return false;
       } }
@@ -262,7 +270,7 @@ function update(dt){
     f.t+=dt; f.y+=f.vy*dt; f.spin+=dt*3;
     const dist=Math.hypot(f.x-player.x, f.y-py);
     if(dist<f.r+pr*0.92){
-      if(f.kind==='hazard'){ gameOver(); return false; }
+      if(f.kind==='hazard'||f.kind==='mine'){ gameOver(); return false; }
       collectFaller(f); player.squash=f.kind==='gold'?1.5:1.28; player.sx=1.4; player.sy=0.7;
       return false;
     }
@@ -292,7 +300,15 @@ function star(x,y,R,r,n,color){ ctx.save();ctx.shadowColor=`rgba(${color},.9)`;c
 function drawFaller(f){ ctx.save();ctx.translate(f.x,f.y);const pop=easeOutBack(clamp(f.t/0.25,0,1));ctx.scale(pop,pop);
   if(f.kind==='orb'){ glowCircle(0,0,f.r,'120,240,255',22); ctx.fillStyle='rgba(255,255,255,.85)';ctx.beginPath();ctx.arc(-f.r*0.25,-f.r*0.25,f.r*0.3,0,7);ctx.fill(); }
   else if(f.kind==='gold'){ ctx.rotate(f.spin); star(0,0,f.r*1.2,f.r*0.55,5,'255,215,90'); }
-  else { ctx.rotate(f.spin); star(0,0,f.r*1.25,f.r*0.5,4,'255,70,100'); } ctx.restore(); }
+  else if(f.kind==='hazard'){ ctx.rotate(f.spin); star(0,0,f.r*1.25,f.r*0.5,4,'255,70,100'); }
+  else { // VURULAMAZ mayın: nabız atan kalkan halkası + dikenli gri gövde + kırmızı çekirdek
+    ctx.rotate(f.spin*0.6); const pl=1+0.1*Math.sin(f.t*9);
+    ctx.save(); ctx.shadowColor='rgba(200,220,255,.9)'; ctx.shadowBlur=12; ctx.strokeStyle='rgba(215,228,255,.95)'; ctx.lineWidth=3.5;
+    ctx.beginPath(); ctx.arc(0,0,f.r*1.3*pl,0,7); ctx.stroke(); ctx.restore();
+    star(0,0,f.r*1.05,f.r*0.62,6,'170,185,225');
+    ctx.save(); ctx.shadowColor='rgba(255,70,90,.95)'; ctx.shadowBlur=10; ctx.fillStyle='rgba(255,85,105,1)';
+    ctx.beginPath(); ctx.arc(0,0,f.r*0.42,0,7); ctx.fill(); ctx.restore();
+  } ctx.restore(); }
 function drawPlayer(){ const tl=player.trail;
   for(let i=tl.length-1;i>0;i--){const a=(1-i/tl.length)*0.35;ctx.fillStyle=hsl(hue%360,90,60,a);ctx.beginPath();ctx.arc(tl[i].x,tl[i].y,player.r*(1-i/tl.length)*0.9,0,7);ctx.fill();}
   ctx.save();ctx.translate(player.x,player.y);ctx.scale(player.sx*player.squash,player.sy*(2-player.squash));
