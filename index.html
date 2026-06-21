@@ -131,7 +131,9 @@ function spark(){ // arka plan yıldız tozu (menü/splash)
 const ST={SPLASH:0,MENU:1,SETTINGS:2,PLAY:3,OVER:4,PAUSE:5};
 let state=ST.SPLASH, t=0, stateT=0;
 let score=0,displayScore=0,combo=1,bestCombo=1,elapsed=0,spawnTimer=0,difficulty=0;
+let level=1,levelBase=0,levelGoal=300,levelUpT=0;            // AŞAMA sistemi
 let best=+localStorage.getItem('nc_best')||0, bestC=+localStorage.getItem('nc_bestc')||0, newRecord=false;
+let bestStage=+localStorage.getItem('nc_beststage')||1;
 let shake=0,flash=0,flashColor='255,255,255',zoom=1,zoomT=1,hitstop=0,bgPulse=0,hue=190;
 let pointerX=0, pointerActive=false;
 let player={x:0,y:0,tx:0,r:22,squash:1,sx:1,sy:1,trail:[]};
@@ -140,15 +142,26 @@ resize();
 function goto(s){ stateT=0; state=s; }
 function reset(){ particles.clear();fallers.clear();popups.clear();
   score=0;displayScore=0;combo=1;bestCombo=1;elapsed=0;spawnTimer=0;difficulty=0;newRecord=false;
+  level=1;levelBase=0;levelGoal=goalFor(1);levelUpT=0;
   player.x=player.tx=pointerX=W/2; player.y=H-Math.max(110,H*0.16); player.trail.length=0;
   shake=0;flash=0;zoom=1;zoomT=1;hitstop=0; }
 function startGame(){ Audio.resume(); reset(); goto(ST.PLAY); }
 function gameOver(){ goto(ST.OVER); Audio.hit(); shake=Math.max(shake,28); doFlash('255,60,90',0.8); hitstop=0.12;
   burst(player.x,player.y,'255,70,110',40,900,0.9); buzz([40,30,80]);
   if(score>best){best=score;newRecord=true;localStorage.setItem('nc_best',best);Audio.record();doFlash('120,255,200',0.7);}
-  if(bestCombo>bestC){bestC=bestCombo;localStorage.setItem('nc_bestc',bestC);} }
+  if(bestCombo>bestC){bestC=bestCombo;localStorage.setItem('nc_bestc',bestC);}
+  if(level>bestStage){bestStage=level;localStorage.setItem('nc_beststage',bestStage);} }
 function doFlash(c,a){flashColor=c;flash=Math.max(flash,a);}
 function zoomPunch(z){zoomT=z;}
+/* ---- AŞAMA (STAGE) sistemi ---- */
+function goalFor(l){ return 300 + (l-1)*180; }            // her aşama biraz daha uzun
+function levelUp(){
+  level++; levelBase=score; levelGoal=goalFor(level); levelUpT=1.5;
+  hue=(hue+45)%360;                                       // her aşama farklı renk havası
+  Audio.record(); zoomPunch(1.22); shake=Math.max(shake,16); doFlash('180,140,255',0.55); hitstop=0.18;
+  burst(W/2,H*0.40,'200,150,255',46,760,1.0); burst(W/2,H*0.40,'120,240,255',24,520,0.8);
+  buzz([20,30,20,40]);
+}
 
 /* ===================== INPUT + BUTONLAR ===================== */
 let BTNS=[]; let pauseBtn={x:1e9,y:1e9,w:0,h:0};
@@ -185,7 +198,9 @@ function update(dt){
 
   // PLAY
   if(hitstop>0){ hitstop-=dt; Audio.tick(dt,0.25); return; }
-  elapsed+=dt; difficulty=clamp(elapsed/55,0,1.2); displayScore=lerp(displayScore,score,0.2);
+  elapsed+=dt; if(levelUpT>0)levelUpT-=dt;
+  difficulty=clamp(0.16*(level-1)+elapsed/120,0,1.8);     // her aşama belirgin hızlanma
+  displayScore=lerp(displayScore,score,0.2);
   player.tx=pointerActive?pointerX:player.x;
   const dx=player.tx-player.x; player.x+=dx*Math.min(1,14*dt);
   const spd=Math.abs(dx);
@@ -215,6 +230,7 @@ function update(dt){
     if(f.y>H+40){ if(f.kind==='orb'){ if(combo>1){Audio.miss();popup(f.x,H-60,'kombo!','120,130,160',false);} combo=1; } return false; }
     return true;
   },dt);
+  if(score>=levelBase+levelGoal) levelUp();               // aşama hedefi doldu → STAGE +1
   Audio.tick(dt, clamp(0.2+difficulty*0.5+Math.min(0.4,combo*0.02),0,1));
 }
 
@@ -304,7 +320,7 @@ function render(){
     center('BY FLORENTIA', H*0.43, 16, 'rgba(180,200,240,.85)', 8);
     button('▶  OYNA', H*0.58, Math.min(300,W*0.7), 64, startGame, 160);
     button('⚙  AYARLAR', H*0.69, Math.min(300,W*0.7), 56, ()=>goto(ST.SETTINGS), 280);
-    if(best>0) center('rekor '+best+'   ·   en iyi kombo x'+bestC, H*0.8, 16,'rgba(150,170,210,.8)',6);
+    if(best>0) center('rekor '+best+'  ·  aşama '+bestStage+'  ·  kombo x'+bestC, H*0.8, 15,'rgba(150,170,210,.8)',6);
   }
   if(state===ST.SETTINGS){
     center('AYARLAR', H*0.22, Math.min(46,W*0.11), '#fff', 14);
@@ -320,7 +336,22 @@ function render(){
     if(combo>1){const ps=1+0.06*Math.sin(t*16);ctx.font=`900 ${30*ps}px 'Trebuchet MS'`;
       ctx.fillStyle=hsl((hue+40)%360,90,65);ctx.shadowColor=hsl((hue+40)%360,90,60,.9);ctx.shadowBlur=16;ctx.fillText('x'+combo,24,104);}
     ctx.restore();
+    // AŞAMA göstergesi (üst orta) + ilerleme çubuğu
+    const prog=clamp((score-levelBase)/levelGoal,0,1);
+    const bw=Math.min(210,W*0.46), bx=W/2-bw/2, by=46;
+    ctx.save(); ctx.textAlign='center';
+    ctx.font="900 17px 'Trebuchet MS'"; ctx.fillStyle='#dce8ff'; ctx.shadowColor='rgba(160,190,255,.7)'; ctx.shadowBlur=8;
+    ctx.fillText('AŞAMA '+level, W/2, by-7); ctx.shadowBlur=0;
+    rr(bx,by,bw,7,4); ctx.fillStyle='rgba(40,50,90,.75)'; ctx.fill();
+    rr(bx,by,Math.max(7,bw*prog),7,4); ctx.fillStyle=hsl(280,90,66); ctx.shadowColor='rgba(190,140,255,.8)'; ctx.shadowBlur=8; ctx.fill();
+    ctx.restore();
     if(state===ST.PLAY) drawPauseBtn();
+  }
+  // AŞAMA geçiş kutlaması (büyük banner)
+  if(levelUpT>0 && (state===ST.PLAY||state===ST.PAUSE)){
+    const a=clamp(levelUpT/1.5,0,1), pop=easeOutBack(clamp((1.5-levelUpT)/0.3,0,1));
+    center('AŞAMA '+level, H*0.40, Math.min(72,W*0.17)*pop, hsl(280,90,70), 28, a);
+    center('hız artıyor!', H*0.40+46, 19, 'rgba(205,175,255,.95)', 10, a);
   }
   if(state===ST.PAUSE){
     ctx.fillStyle='rgba(5,6,15,0.62)'; ctx.fillRect(0,0,W,H);
@@ -339,8 +370,8 @@ function render(){
     else center('BİTTİ', H*0.25, Math.min(56,W*0.14),'#fff',16,ap);
     center('SKOR', H*0.37, 18,'rgba(160,180,220,.8)',6,ap);
     center(score, H*0.44, Math.min(64,W*0.16), hsl(190,90,65),20,ap);
-    center('en yüksek kombo  x'+bestCombo, H*0.52, 20,'rgba(200,180,255,.95)',8,ap);
-    center('rekor '+best, H*0.57, 16,'rgba(150,170,210,.8)',6,ap);
+    center('aşama '+level+'  ·  en yüksek kombo x'+bestCombo, H*0.52, 19,'rgba(200,180,255,.95)',8,ap);
+    center('en iyi aşama '+bestStage+'   ·   rekor '+best, H*0.575, 16,'rgba(150,170,210,.85)',6,ap);
     if(stateT>0.4){ button('▶  TEKRAR', H*0.72, Math.min(280,W*0.66), 60, startGame, 160);
       button('☰  MENÜ', H*0.83, Math.min(280,W*0.66), 52, ()=>goto(ST.MENU), 280); }
   }
