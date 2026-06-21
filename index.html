@@ -93,23 +93,36 @@ const Audio = (()=>{
   function record(){ if(!sfxOn)return; [0,4,7,12,16,19].forEach((s,i)=>setTimeout(()=>tone(523*Math.pow(2,s/12),0.3,'triangle',0.26,120),i*90)); }
   function tap(){ if(!sfxOn)return; tone(820,0.05,'square',0.12); }
   function whoosh(){ if(!sfxOn)return; noise(0.35,0.18,null,400); }
-  const SCALE=[0,3,5,7,10,12];
+  function shoot(){ if(!sfxOn)return; tone(1500+Math.random()*260,0.045,'square',0.045,-760); }   // ufak "pew"
+  function hit2(){ if(!sfxOn)return; noise(0.14,0.34); tone(190,0.16,'sawtooth',0.2,-90); }          // tehlike patladı
+  function kick(){ if(!ctxA||!musicOn)return; const o=ctxA.createOscillator(),g=ctxA.createGain();
+    o.type='sine'; o.frequency.setValueAtTime(150,ctxA.currentTime); o.frequency.exponentialRampToValueAtTime(46,ctxA.currentTime+0.11);
+    g.gain.setValueAtTime(0.55,ctxA.currentTime); g.gain.exponentialRampToValueAtTime(0.001,ctxA.currentTime+0.16);
+    o.connect(g); g.connect(musicGain); o.start(); o.stop(ctxA.currentTime+0.18); }
+  // I–V–vi–IV (öforik pop) — kök/3lü/5li yarım-ton ofsetleri (C tabanlı)
+  const C_ROOT=[0,7,9,5], C_3=[4,11,12,9], C_5=[7,14,16,12], BASS=65.41, ARP=523.25;
   function tick(dt, inten){
     if(!ctxA) return;
     intensity = lerp(intensity, inten, 0.05);
-    const target = musicOn? (0.09+intensity*0.10):0;
+    const target = musicOn? (0.11+intensity*0.13):0;
     musicGain.gain.setTargetAtTime(target, ctxA.currentTime, 0.3);
     if(!musicOn) return;
-    const bpm=96+intensity*70, spb=60/bpm; beatTimer+=dt;
+    const bpm=122+intensity*34, spb=60/bpm/4; beatTimer+=dt;     // onaltılık adım
     if(beatTimer>=spb){ beatTimer-=spb; beat=(beat+1)%16;
-      tone(((beat%8)<4)?55:49,0.16,'sawtooth',0.22,0,musicGain);
-      if(beat%2===0) noise(0.03,0.05+intensity*0.06,musicGain,6000);
-      if(intensity>0.3 && beat%2===1) tone(440*Math.pow(2,SCALE[beat%SCALE.length]/12),0.12,'triangle',0.06+intensity*0.07,0,musicGain);
+      const ch=(beat>>2)&3, root=C_ROOT[ch];
+      if((beat&3)===0){ kick(); tone(BASS*Math.pow(2,root/12),0.2,'sawtooth',0.2,0,musicGain); }  // four-on-floor + bas
+      noise(0.022,((beat&1)?0.07:0.035)+intensity*0.04,musicGain,8000);                           // hi-hat
+      if(intensity>0.1){                                                                            // PARLAK ARPEJ (dopamin)
+        const steps=[0,C_3[ch]-root,C_5[ch]-root,12], semi=root+steps[beat&3];
+        tone(ARP*Math.pow(2,semi/12),0.14,'triangle',0.06+intensity*0.09,0,musicGain);
+        if(intensity>0.45) tone(ARP*2*Math.pow(2,semi/12),0.07,'square',0.025+intensity*0.03,0,musicGain);
+      }
+      if(intensity>0.7 && (beat&7)===6) tone(ARP*Math.pow(2,(root+7)/12),0.1,'sawtooth',0.05,0,musicGain); // enerji stab
     }
   }
   function setSfx(b){ sfxOn=b; }
   function setMusic(b){ musicOn=b; if(ctxA&&musicGain&&!b) musicGain.gain.setTargetAtTime(0,ctxA.currentTime,0.15); }
-  return {resume,collect,gold,miss,hit,milestone,record,tap,whoosh,tick,setSfx,setMusic};
+  return {resume,collect,gold,miss,hit,milestone,record,tap,whoosh,tick,setSfx,setMusic,shoot,hit2};
 })();
 
 /* ===================== HAVUZLAR ===================== */
@@ -118,7 +131,7 @@ function Pool(make){ const free=[],used=[];
     update(fn,dt){for(let i=used.length-1;i>=0;i--){if(fn(used[i],dt)===false){free.push(used[i]);used.splice(i,1);}}},
     each(fn){for(const o of used)fn(o);}, get list(){return used;}, clear(){while(used.length)free.push(used.pop());} };
 }
-const particles=Pool(()=>({})), fallers=Pool(()=>({})), popups=Pool(()=>({}));
+const particles=Pool(()=>({})), fallers=Pool(()=>({})), popups=Pool(()=>({})), bullets=Pool(()=>({}));
 function burst(x,y,color,n,spd,life=0.6){ for(let i=0;i<n;i++){const p=particles.spawn(),a=rand(0,6.28),s=rand(spd*0.3,spd);
   p.x=x;p.y=y;p.vx=Math.cos(a)*s;p.vy=Math.sin(a)*s;p.life=p.max=rand(life*0.5,life);p.r=rand(2,5);p.color=color;} }
 function popup(x,y,txt,color,big){ const p=popups.spawn();p.x=x;p.y=y;p.txt=txt;p.color=color;p.life=p.max=big?1.1:0.85;p.big=!!big;p.vy=big?-70:-90;return p; }
@@ -136,15 +149,16 @@ let best=+localStorage.getItem('nc_best')||0, bestC=+localStorage.getItem('nc_be
 let bestStage=+localStorage.getItem('nc_beststage')||1;
 let shake=0,flash=0,flashColor='255,255,255',zoom=1,zoomT=1,hitstop=0,bgPulse=0,hue=190;
 let pointerX=0, pointerActive=false;
+let fireTimer=0, muzzle=0; const FIRE_INTERVAL=0.13;        // tabanca otomatik ateş
 let player={x:0,y:0,tx:0,r:22,squash:1,sx:1,sy:1,trail:[]};
 resize();
 
 function goto(s){ stateT=0; state=s; }
-function reset(){ particles.clear();fallers.clear();popups.clear();
+function reset(){ particles.clear();fallers.clear();popups.clear();bullets.clear();
   score=0;displayScore=0;combo=1;bestCombo=1;elapsed=0;spawnTimer=0;difficulty=0;newRecord=false;
   level=1;levelBase=0;levelGoal=goalFor(1);levelUpT=0;
   player.x=player.tx=pointerX=W/2; player.y=H-Math.max(110,H*0.16); player.trail.length=0;
-  shake=0;flash=0;zoom=1;zoomT=1;hitstop=0; }
+  shake=0;flash=0;zoom=1;zoomT=1;hitstop=0;fireTimer=0;muzzle=0; }
 function startGame(){ Audio.resume(); reset(); goto(ST.PLAY); }
 function gameOver(){ goto(ST.OVER); Audio.hit(); shake=Math.max(shake,28); doFlash('255,60,90',0.8); hitstop=0.12;
   burst(player.x,player.y,'255,70,110',40,900,0.9); buzz([40,30,80]);
@@ -161,6 +175,25 @@ function levelUp(){
   Audio.record(); zoomPunch(1.22); shake=Math.max(shake,16); doFlash('180,140,255',0.55); hitstop=0.18;
   burst(W/2,H*0.40,'200,150,255',46,760,1.0); burst(W/2,H*0.40,'120,240,255',24,520,0.8);
   buzz([20,30,20,40]);
+}
+/* ---- toplama / vurma (hem dokunuş hem mermi kullanır) ---- */
+function collectFaller(f){
+  const gold=f.kind==='gold'; combo++; bestCombo=Math.max(bestCombo,combo);
+  const gain=(gold?50:10)*combo; score+=gain;
+  popup(f.x,f.y-10,'+'+gain,gold?'255,215,90':'120,240,255',gold);
+  burst(f.x,f.y,gold?'255,215,90':'120,240,255',gold?26:14,gold?620:420,0.6);
+  doFlash(gold?'255,215,90':'120,240,255',gold?0.30:0.14);
+  if(gold){Audio.gold();zoomPunch(1.12);shake=Math.max(shake,8);buzz(25);} else {Audio.collect(combo);buzz(8);}
+  if(combo%5===0){Audio.milestone();zoomPunch(1.16);shake=Math.max(shake,10);doFlash('180,120,255',0.3);
+    popup(W/2,player.y-90,'KOMBO x'+combo,'200,150,255',true);buzz([15,20,15]);}
+}
+function destroyHazard(f){   // kırmızı yıldızı vurmak güvenli: yok eder, küçük puan
+  score+=5; popup(f.x,f.y,'+5','255,150,150',false);
+  burst(f.x,f.y,'255,80,95',20,560,0.6); Audio.hit2(); shake=Math.max(shake,7); buzz(14); doFlash('255,90,110',0.16);
+}
+function fireBullet(){       // namlu ucundan yukarı ufak mermi
+  const b=bullets.spawn(); b.x=player.x; b.y=player.y-player.r-4; b.vy=-760; b.t=0;
+  muzzle=1; Audio.shoot();
 }
 
 /* ===================== INPUT + BUTONLAR ===================== */
@@ -179,7 +212,7 @@ cv.addEventListener('pointermove', e=>{ if(state===ST.PLAY) setPointer(e); });
 cv.addEventListener('touchmove', e=>e.preventDefault(), {passive:false});
 
 /* ===================== SPAWN ===================== */
-function spawn(){ const f=fallers.spawn(); f.x=rand(40,W-40);f.y=-30;f.r=rand(16,22);f.t=0;f.spin=rand(0,6.28);
+function spawn(){ const f=fallers.spawn(); f.x=rand(40,W-40);f.y=-30;f.r=rand(16,22);f.t=0;f.spin=rand(0,6.28);f.dead=false;
   const haz=clamp(0.18+difficulty*0.18,0.18,0.46), roll=Math.random();
   f.kind = roll<0.05?'gold' : roll<0.05+haz?'hazard':'orb';
   if(f.kind==='gold')f.r=20; f.vy=rand(180,230)+difficulty*150; }
@@ -210,21 +243,27 @@ function update(dt){
   player.trail.unshift({x:player.x,y:player.y}); if(player.trail.length>14)player.trail.pop();
   spawnTimer-=dt; const interval=clamp(0.62-difficulty*0.34,0.24,0.62);
   if(spawnTimer<=0){ spawnTimer=interval*rand(0.7,1.15); spawn(); }
+  // TABANCA: namludan otomatik mermi akışı + mermi-tehlike çarpışması
+  fireTimer-=dt; if(muzzle>0)muzzle=Math.max(0,muzzle-dt*6);
+  if(fireTimer<=0){ fireTimer=FIRE_INTERVAL; fireBullet(); }
+  bullets.update((b,dt)=>{
+    b.y+=b.vy*dt; b.t+=dt;
+    if(b.y<-24) return false;
+    for(const f of fallers.list){ if(f.dead) continue;
+      if(Math.hypot(f.x-b.x, f.y-b.y) < f.r+5){
+        if(f.kind==='hazard') destroyHazard(f); else collectFaller(f);
+        f.dead=true; return false;
+      } }
+    return true;
+  },dt);
   const py=player.y, pr=player.r;
   fallers.update((f,dt)=>{
+    if(f.dead) return false;
     f.t+=dt; f.y+=f.vy*dt; f.spin+=dt*3;
     const dist=Math.hypot(f.x-player.x, f.y-py);
     if(dist<f.r+pr*0.92){
       if(f.kind==='hazard'){ gameOver(); return false; }
-      const gold=f.kind==='gold'; combo++; bestCombo=Math.max(bestCombo,combo);
-      const gain=(gold?50:10)*combo; score+=gain;
-      popup(f.x,f.y-10,'+'+gain,gold?'255,215,90':'120,240,255',gold);
-      burst(f.x,f.y,gold?'255,215,90':'120,240,255',gold?26:14,gold?620:420,0.6);
-      player.squash=gold?1.5:1.28; player.sx=1.4; player.sy=0.7;
-      doFlash(gold?'255,215,90':'120,240,255',gold?0.32:0.16);
-      if(gold){Audio.gold();zoomPunch(1.12);shake=Math.max(shake,8);buzz(25);} else {Audio.collect(combo);buzz(10);}
-      if(combo%5===0){Audio.milestone();zoomPunch(1.16);shake=Math.max(shake,10);doFlash('180,120,255',0.3);
-        popup(W/2,player.y-90,'KOMBO x'+combo,'200,150,255',true);buzz([15,20,15]);}
+      collectFaller(f); player.squash=f.kind==='gold'?1.5:1.28; player.sx=1.4; player.sy=0.7;
       return false;
     }
     if(f.y>H+40){ if(f.kind==='orb'){ if(combo>1){Audio.miss();popup(f.x,H-60,'kombo!','120,130,160',false);} combo=1; } return false; }
@@ -258,7 +297,21 @@ function drawPlayer(){ const tl=player.trail;
   for(let i=tl.length-1;i>0;i--){const a=(1-i/tl.length)*0.35;ctx.fillStyle=hsl(hue%360,90,60,a);ctx.beginPath();ctx.arc(tl[i].x,tl[i].y,player.r*(1-i/tl.length)*0.9,0,7);ctx.fill();}
   ctx.save();ctx.translate(player.x,player.y);ctx.scale(player.sx*player.squash,player.sy*(2-player.squash));
   glowCircle(0,0,player.r,'130,255,210',26+(state===ST.PLAY?8*Math.sin(t*10):0));
-  ctx.fillStyle='rgba(255,255,255,.9)';ctx.beginPath();ctx.arc(-6,-6,player.r*0.32,0,7);ctx.fill();ctx.restore(); }
+  ctx.fillStyle='rgba(255,255,255,.9)';ctx.beginPath();ctx.arc(-6,-6,player.r*0.32,0,7);ctx.fill();ctx.restore();
+  drawGun(); }
+function drawGun(){
+  ctx.save(); ctx.translate(player.x, player.y); ctx.translate(0, muzzle*3);   // küçük geri tepme
+  const len=player.r*0.95;
+  ctx.shadowColor='rgba(150,220,255,.6)'; ctx.shadowBlur=8;
+  ctx.fillStyle='#9fb2da'; rr(-5, -player.r*0.4-len, 10, len, 3); ctx.fill();          // namlu gövdesi
+  ctx.fillStyle='#d6e4ff'; rr(-3.5, -player.r*0.4-len, 7, len*0.5, 2); ctx.fill();     // parlak iç
+  if(muzzle>0){ ctx.globalAlpha=clamp(muzzle,0,1); ctx.shadowColor='rgba(190,245,255,.95)'; ctx.shadowBlur=16;
+    ctx.fillStyle='rgba(225,250,255,1)'; ctx.beginPath(); ctx.arc(0, -player.r*0.4-len, 5*muzzle+3, 0,7); ctx.fill(); }
+  ctx.restore(); }
+function drawBullets(){ for(const b of bullets.list){ ctx.save();
+  ctx.shadowColor='rgba(170,245,255,.9)'; ctx.shadowBlur=10; ctx.fillStyle='rgba(215,250,255,1)';
+  ctx.beginPath(); ctx.ellipse(b.x,b.y,3,7,0,0,7); ctx.fill();
+  ctx.globalAlpha=.45; ctx.beginPath(); ctx.ellipse(b.x,b.y+9,2,9,0,0,7); ctx.fill(); ctx.restore(); } }
 function drawParticles(){ for(const p of particles.list){const a=p.life/p.max;ctx.save();ctx.globalAlpha=clamp(a,0,1);
   ctx.shadowColor=`rgba(${p.color},.9)`;ctx.shadowBlur=8;ctx.fillStyle=`rgba(${p.color},1)`;ctx.beginPath();ctx.arc(p.x,p.y,p.r*Math.max(0.2,a),0,7);ctx.fill();ctx.restore();} }
 function drawPopups(){ for(const p of popups.list){const a=clamp(p.life/p.max,0,1);ctx.save();ctx.globalAlpha=a;ctx.textAlign='center';
@@ -295,7 +348,7 @@ function render(){
   const sx=(Math.random()*2-1)*shake, sy=(Math.random()*2-1)*shake;
   ctx.translate(W/2,H/2);ctx.scale(zoom,zoom);ctx.translate(-W/2+sx,-H/2+sy);
   drawParticles();
-  if(state===ST.PLAY||state===ST.PAUSE){ fallers.each(drawFaller); drawPlayer(); drawPopups(); }
+  if(state===ST.PLAY||state===ST.PAUSE){ fallers.each(drawFaller); drawBullets(); drawPlayer(); drawPopups(); }
   ctx.restore();
 
   if(state===ST.SPLASH){
