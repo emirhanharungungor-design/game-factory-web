@@ -128,7 +128,7 @@ function spark(){ // arka plan yıldız tozu (menü/splash)
 }
 
 /* ===================== DURUM ===================== */
-const ST={SPLASH:0,MENU:1,SETTINGS:2,PLAY:3,OVER:4};
+const ST={SPLASH:0,MENU:1,SETTINGS:2,PLAY:3,OVER:4,PAUSE:5};
 let state=ST.SPLASH, t=0, stateT=0;
 let score=0,displayScore=0,combo=1,bestCombo=1,elapsed=0,spawnTimer=0,difficulty=0;
 let best=+localStorage.getItem('nc_best')||0, bestC=+localStorage.getItem('nc_bestc')||0, newRecord=false;
@@ -151,12 +151,15 @@ function doFlash(c,a){flashColor=c;flash=Math.max(flash,a);}
 function zoomPunch(z){zoomT=z;}
 
 /* ===================== INPUT + BUTONLAR ===================== */
-let BTNS=[];
+let BTNS=[]; let pauseBtn={x:1e9,y:1e9,w:0,h:0};
 function setPointer(e){ pointerX=clamp(e.clientX,0,W); pointerActive=true; }
 cv.addEventListener('pointerdown', e=>{
   Audio.resume();
   if(state===ST.SPLASH){ goto(ST.MENU); Audio.whoosh(); return; }
-  if(state===ST.PLAY){ setPointer(e); return; }
+  if(state===ST.PLAY){
+    if(e.clientX>=pauseBtn.x&&e.clientX<=pauseBtn.x+pauseBtn.w&&e.clientY>=pauseBtn.y&&e.clientY<=pauseBtn.y+pauseBtn.h){ goto(ST.PAUSE); Audio.tap(); buzz(8); return; }
+    setPointer(e); return;
+  }
   for(const b of BTNS){ if(e.clientX>=b.x&&e.clientX<=b.x+b.w&&e.clientY>=b.y&&e.clientY<=b.y+b.h){ Audio.tap(); buzz(8); b.action(); return; } }
 });
 cv.addEventListener('pointermove', e=>{ if(state===ST.PLAY) setPointer(e); });
@@ -171,6 +174,7 @@ function spawn(){ const f=fallers.spawn(); f.x=rand(40,W-40);f.y=-30;f.r=rand(16
 /* ===================== UPDATE ===================== */
 function update(dt){
   t+=dt; stateT+=dt; bgPulse+=dt; hue+=dt*8;
+  if(state===ST.PAUSE){ Audio.tick(dt,0.08); return; }   // donmuş sahne
   zoom=lerp(zoom,zoomT,0.12); zoomT=lerp(zoomT,1,0.08);
   shake=Math.max(0,shake-shake*8*dt-0.1); flash=Math.max(0,flash-dt*2.2);
   particles.update((p,dt)=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx*=0.92;p.vy*=0.95;p.life-=dt;return p.life>0;},dt);
@@ -246,6 +250,15 @@ function drawPopups(){ for(const p of popups.list){const a=clamp(p.life/p.max,0,
   ctx.shadowColor=`rgba(${p.color},.9)`;ctx.shadowBlur=14;ctx.fillStyle=`rgba(${p.color},1)`;ctx.fillText(p.txt,p.x,p.y);ctx.restore();} }
 function center(txt,y,size,color,glow=16,alpha=1){ ctx.save();ctx.globalAlpha=alpha;ctx.textAlign='center';ctx.font=`900 ${size}px 'Trebuchet MS'`;
   ctx.shadowColor=color;ctx.shadowBlur=glow;ctx.fillStyle=color;ctx.fillText(txt,W/2,y);ctx.restore(); }
+function drawPauseBtn(){
+  const s=46, x=W-s-14, y=18; pauseBtn={x,y,w:s,h:s};
+  ctx.save(); ctx.shadowColor='rgba(120,200,255,.5)'; ctx.shadowBlur=10;
+  rr(x,y,s,s,13); ctx.fillStyle='rgba(20,28,55,.65)'; ctx.fill();
+  ctx.lineWidth=1.5; ctx.strokeStyle='rgba(120,200,255,.6)'; ctx.stroke();
+  ctx.shadowBlur=0; ctx.fillStyle='#cfe0ff';
+  ctx.fillRect(x+s*0.32,y+s*0.3,s*0.11,s*0.4); ctx.fillRect(x+s*0.55,y+s*0.3,s*0.11,s*0.4);
+  ctx.restore();
+}
 function button(label,cy,w,h,action,accent){ const x=W/2-w/2,y=cy-h/2,fl=0.5+0.5*Math.sin(t*4);
   ctx.save(); ctx.shadowColor=hsl(accent,90,60,.7);ctx.shadowBlur=16; rr(x,y,w,h,h/2);
   ctx.fillStyle=hsl(accent,70,12); ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle=hsl(accent,90,60,.6+0.4*fl); ctx.stroke();
@@ -266,7 +279,7 @@ function render(){
   const sx=(Math.random()*2-1)*shake, sy=(Math.random()*2-1)*shake;
   ctx.translate(W/2,H/2);ctx.scale(zoom,zoom);ctx.translate(-W/2+sx,-H/2+sy);
   drawParticles();
-  if(state===ST.PLAY){ fallers.each(drawFaller); drawPlayer(); drawPopups(); }
+  if(state===ST.PLAY||state===ST.PAUSE){ fallers.each(drawFaller); drawPlayer(); drawPopups(); }
   ctx.restore();
 
   if(state===ST.SPLASH){
@@ -301,12 +314,23 @@ function render(){
     center('titreşim sadece Android · iPhone desteklemiyor', H*0.4+230, 12,'rgba(140,160,200,.7)',4);
     button('←  GERİ', H*0.82, Math.min(220,W*0.6), 56, ()=>goto(ST.MENU), 200);
   }
-  if(state===ST.PLAY){
+  if(state===ST.PLAY||state===ST.PAUSE){
     ctx.save();ctx.textAlign='left';ctx.font="900 54px 'Trebuchet MS'";ctx.fillStyle='#fff';
     ctx.shadowColor=hsl(hue%360,90,60,.8);ctx.shadowBlur=12;ctx.fillText(Math.floor(displayScore),22,66);
-    if(combo>1){const ps=1+0.08*Math.sin(t*16);ctx.textAlign='right';ctx.font=`900 ${42*ps}px 'Trebuchet MS'`;
-      ctx.fillStyle=hsl((hue+40)%360,90,65);ctx.shadowColor=hsl((hue+40)%360,90,60,.9);ctx.shadowBlur=18;ctx.fillText('x'+combo,W-22,60);}
+    if(combo>1){const ps=1+0.06*Math.sin(t*16);ctx.font=`900 ${30*ps}px 'Trebuchet MS'`;
+      ctx.fillStyle=hsl((hue+40)%360,90,65);ctx.shadowColor=hsl((hue+40)%360,90,60,.9);ctx.shadowBlur=16;ctx.fillText('x'+combo,24,104);}
     ctx.restore();
+    if(state===ST.PLAY) drawPauseBtn();
+  }
+  if(state===ST.PAUSE){
+    ctx.fillStyle='rgba(5,6,15,0.62)'; ctx.fillRect(0,0,W,H);
+    center('⏸  DURAKLATILDI', H*0.17, Math.min(34,W*0.085),'#fff',14);
+    button('▶  DEVAM', H*0.29, Math.min(280,W*0.7), 62, ()=>goto(ST.PLAY), 160);
+    toggleRow('🎵  Müzik', Settings.music, H*0.44, ()=>{Settings.music=!Settings.music;Audio.setMusic(Settings.music);saveSettings();});
+    toggleRow('🔊  Efektler', Settings.sfx, H*0.44+78, ()=>{Settings.sfx=!Settings.sfx;Audio.setSfx(Settings.sfx);saveSettings();});
+    toggleRow('📳  Titreşim', Settings.haptics, H*0.44+156, ()=>{Settings.haptics=!Settings.haptics;saveSettings();buzz(20);});
+    button('⟳  YENİDEN', H*0.75, Math.min(260,W*0.64), 54, startGame, 280);
+    button('☰  MENÜ', H*0.85, Math.min(260,W*0.64), 50, ()=>goto(ST.MENU), 200);
   }
   if(state===ST.OVER){
     ctx.fillStyle='rgba(5,6,15,0.55)';ctx.fillRect(0,0,W,H);
