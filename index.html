@@ -403,7 +403,75 @@ function howIcon(kind,x,y){ ctx.save(); ctx.translate(x,y);
   else if(kind==='side'){ ctx.save();ctx.shadowColor='rgba(255,120,120,.9)';ctx.shadowBlur=8;ctx.strokeStyle='rgba(255,120,120,.9)';ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(0,0,15,0,7);ctx.stroke();ctx.restore(); glowCircle(0,0,9,'255,80,90',10); }
   else if(kind==='mega'){ glowCircle(0,0,13,'80,255,135',16); star(0,0,8,4,5,'200,255,215'); }
   else if(kind==='gun'){ ctx.save();ctx.shadowColor='rgba(150,220,255,.5)';ctx.shadowBlur=6;ctx.fillStyle='#9fb2da';rr(-4,-17,8,16,3);ctx.fill();ctx.restore(); glowCircle(0,6,8,'130,255,210',10); }
+  else if(kind==='timer'){ ctx.save();ctx.shadowColor='rgba(120,210,255,.8)';ctx.shadowBlur=10;ctx.strokeStyle='#7fe0ff';ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(0,1,13,0,7);ctx.stroke();ctx.beginPath();ctx.moveTo(0,1);ctx.lineTo(0,-7);ctx.moveTo(0,1);ctx.lineTo(7,4);ctx.stroke();ctx.beginPath();ctx.moveTo(-5,-15);ctx.lineTo(5,-15);ctx.stroke();ctx.restore(); }
+  else if(kind==='skull'){ ctx.save();ctx.shadowColor='rgba(255,90,100,.85)';ctx.shadowBlur=10;ctx.fillStyle='#ff5a6a';ctx.beginPath();ctx.arc(0,-2,12,Math.PI,0);ctx.lineTo(8,8);ctx.lineTo(-8,8);ctx.closePath();ctx.fill();ctx.fillStyle='#1a0a0e';ctx.beginPath();ctx.arc(-5,-2,3.2,0,7);ctx.arc(5,-2,3.2,0,7);ctx.fill();ctx.restore(); }
   ctx.restore(); }
+/* ===================== NASIL OYNANIR (neon kitap) ===================== */
+const HOW_ITEMS=[
+  ['gun','Tabanca','Otomatik ateş; güç her aşamada artar.'],
+  ['orb','Mavi orb','Vur ya da dokun → puan + kombo.'],
+  ['gold','Altın yıldız','Büyük bonus puan.'],
+  ['hazard','Kırmızı yıldız','Vurursan +5; dokunursan ölürsün.'],
+  ['mine','Mayın','VURULAMAZ — mermi seker. KAÇ!'],
+  ['side','İki yandan (60s)','Yanlardan gelir; ORTADA dur.'],
+  ['mega','Yeşil (100s)','+1000 dev bonus.'],
+];
+function neonRRect(x,y,w,h,r,col,lw,glow){ ctx.save(); ctx.shadowColor=col; ctx.shadowBlur=glow; ctx.strokeStyle=col; ctx.lineWidth=lw; rr(x,y,w,h,r); ctx.stroke(); ctx.restore(); }
+function drawBookFrame(bx,by,bw,bh){
+  ctx.save();
+  ctx.fillStyle='rgba(8,14,32,.78)'; rr(bx,by,bw,bh,20); ctx.fill();                 // sayfa zemini
+  neonRRect(bx,by,bw,bh,20,'rgba(90,210,255,.95)',3,22);                              // dış parlak çerçeve
+  neonRRect(bx+11,by+11,bw-22,bh-22,14,'rgba(150,230,255,.55)',1.5,8);               // iç ince çerçeve
+  // köşe köşebentleri
+  ctx.save(); ctx.strokeStyle='rgba(130,230,255,.95)'; ctx.shadowColor='rgba(90,210,255,.8)'; ctx.shadowBlur=10; ctx.lineWidth=3; const c=24,o=20;
+  [[bx+o,by+o,1,1],[bx+bw-o,by+o,-1,1],[bx+o,by+bh-o,1,-1],[bx+bw-o,by+bh-o,-1,-1]].forEach(([cx,cy,sx,sy])=>{
+    ctx.beginPath(); ctx.moveTo(cx,cy+sy*c); ctx.lineTo(cx,cy); ctx.lineTo(cx+sx*c,cy); ctx.stroke(); });
+  ctx.restore(); ctx.restore();
+}
+function touchDot(x,y){ ctx.save(); ctx.strokeStyle='rgba(150,230,255,.9)'; ctx.shadowColor='rgba(120,210,255,.85)'; ctx.shadowBlur=10; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.arc(x,y,13,0,7); ctx.stroke(); ctx.fillStyle='rgba(150,230,255,.95)'; ctx.beginPath(); ctx.arc(x,y,5,0,7); ctx.fill(); ctx.restore(); }
+function dragVisual(cx,cy,w){ const gap=Math.min(80,w*0.3), x1=cx-gap, x2=cx+gap;
+  touchDot(x1,cy); touchDot(x2,cy);
+  ctx.save(); ctx.strokeStyle='#5ad0ff'; ctx.fillStyle='#5ad0ff'; ctx.shadowColor='rgba(90,210,255,.8)'; ctx.shadowBlur=8; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(x1+20,cy); ctx.lineTo(x2-22,cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x2-22,cy); ctx.lineTo(x2-33,cy-7); ctx.lineTo(x2-33,cy+7); ctx.closePath(); ctx.fill(); ctx.restore(); }
+function legendRow(it,x,cy,wmax){ howIcon(it[0], x+14, cy);
+  ctx.save(); ctx.textAlign='left'; ctx.shadowBlur=0;
+  ctx.font="700 16px 'Trebuchet MS'"; ctx.fillStyle='#e3ecff'; ctx.fillText(it[1], x+40, cy-5);
+  ctx.font="400 12.5px 'Trebuchet MS'"; ctx.fillStyle='rgba(165,182,222,.92)'; ctx.fillText(it[2], x+40, cy+14);
+  ctx.restore(); }
+function renderHowto(){
+  ctx.fillStyle='rgba(4,6,16,0.82)'; ctx.fillRect(0,0,W,H);
+  const bx=W*0.04, by=H*0.06, bw=W*0.92, bh=H*0.80;
+  drawBookFrame(bx,by,bw,bh);
+  const twoCol = bw > bh*1.15;
+  ctx.save(); ctx.textAlign='left';
+  ctx.font=`900 ${Math.min(32,bw*0.055)}px 'Trebuchet MS'`; ctx.fillStyle='#7fe6ff'; ctx.shadowColor='rgba(90,210,255,.9)'; ctx.shadowBlur=16;
+  ctx.fillText('NASIL OYNANIR', bx+34, by+54); ctx.restore();
+  if(twoCol){
+    ctx.save(); ctx.strokeStyle='rgba(90,210,255,.3)'; ctx.shadowColor='rgba(90,210,255,.6)'; ctx.shadowBlur=10; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(bx+bw/2,by+26); ctx.lineTo(bx+bw/2,by+bh-26); ctx.stroke(); ctx.restore();
+    const lx=bx+34, lw=bw/2-70, lt=by+86, lrh=Math.min(54,(bh-130)/HOW_ITEMS.length);
+    for(let i=0;i<HOW_ITEMS.length;i++) legendRow(HOW_ITEMS[i], lx, lt+lrh*i+lrh*0.5, lw);
+    const rx=bx+bw/2+28, rw=bw/2-64, ry=by+70;
+    ctx.save(); ctx.textAlign='center'; ctx.font="700 15px 'Trebuchet MS'"; ctx.fillStyle='#cfe0ff'; ctx.shadowColor='rgba(120,200,255,.5)'; ctx.shadowBlur=6;
+    ctx.fillText('Parmağını sürükle → hareket + nişan al', rx+rw/2, ry+14); ctx.restore();
+    dragVisual(rx+rw/2, ry+56, rw);
+    ctx.save(); ctx.strokeStyle='rgba(255,90,110,.55)'; ctx.shadowColor='rgba(255,90,110,.6)'; ctx.shadowBlur=8; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(rx+16,ry+96); ctx.lineTo(rx+rw-16,ry+96); ctx.stroke(); ctx.restore();
+    legendRow(['timer','Boss (20s)','1000 can — gücün yetince devir.'], rx, ry+138, rw);
+    legendRow(['mega','Yeşil (100s)','+1000 dev bonus.'], rx, ry+196, rw);
+  } else {
+    const lt=by+82, lrh=Math.min(52,(bh-180)/HOW_ITEMS.length);
+    for(let i=0;i<HOW_ITEMS.length;i++) legendRow(HOW_ITEMS[i], bx+26, lt+lrh*i+lrh*0.5, bw-52);
+    legendRow(['timer','Boss (20s)','1000 can — gücün yetince devir.'], bx+26, lt+lrh*HOW_ITEMS.length+lrh*0.5, bw-52);
+    ctx.save(); ctx.textAlign='center'; ctx.font="700 13px 'Trebuchet MS'"; ctx.fillStyle='#cfe0ff'; ctx.shadowColor='rgba(120,200,255,.5)'; ctx.shadowBlur=6;
+    ctx.fillText('Parmağını sürükle → hareket + nişan al', W/2, by+bh-46); ctx.restore();
+    dragVisual(W/2, by+bh-20, bw*0.6);
+  }
+  if(howtoThenPlay) button('▶  ANLADIM, BAŞLA', by+bh+H*0.06, Math.min(320,W*0.8), 52, ()=>{ localStorage.setItem('nc_guide','1'); startGame(); }, 160);
+  else button('←  GERİ', by+bh+H*0.06, Math.min(220,W*0.55), 50, ()=>goto(ST.SETTINGS), 200);
+}
 function drawParticles(){ for(const p of particles.list){const a=p.life/p.max;ctx.save();ctx.globalAlpha=clamp(a,0,1);
   ctx.shadowColor=`rgba(${p.color},.9)`;ctx.shadowBlur=8;ctx.fillStyle=`rgba(${p.color},1)`;ctx.beginPath();ctx.arc(p.x,p.y,p.r*Math.max(0.2,a),0,7);ctx.fill();ctx.restore();} }
 function drawPopups(){ for(const p of popups.list){const a=clamp(p.life/p.max,0,1);ctx.save();ctx.globalAlpha=a;ctx.textAlign='center';
@@ -476,31 +544,7 @@ function render(){
     button('❔  NASIL OYNANIR', H*0.72, Math.min(300,W*0.72), 54, ()=>{ howtoThenPlay=false; goto(ST.HOWTO); }, 190);
     button('←  GERİ', H*0.84, Math.min(220,W*0.6), 52, ()=>goto(ST.MENU), 200);
   }
-  if(state===ST.HOWTO){
-    ctx.fillStyle='rgba(5,6,15,0.74)'; ctx.fillRect(0,0,W,H);
-    center('NASIL OYNANIR', H*0.10, Math.min(32,W*0.082), '#fff', 14);
-    const items=[
-      ['gun','Tabanca','Otomatik ateş eder; gücü her aşamada artar.'],
-      ['orb','Mavi orb','Vur ya da dokun → puan + kombo.'],
-      ['gold','Altın yıldız','Büyük bonus puan.'],
-      ['hazard','Kırmızı yıldız','Vurursan +5; dokunursan ölürsün.'],
-      ['mine','Mayın','VURULAMAZ — mermi seker. KAÇ!'],
-      ['boss','Boss (20s)','1000 can — gücün yetince devir.'],
-      ['side','İki yandan (60s)','Yanlardan gelir; ORTADA dur.'],
-      ['mega','Yeşil (100s)','+1000 dev bonus.'],
-    ];
-    const top=H*0.16, rowH=Math.min(58,(H*0.6)/items.length);
-    for(let i=0;i<items.length;i++){ const y=top+rowH*i+rowH/2, it=items[i];
-      howIcon(it[0], W*0.13, y);
-      ctx.save(); ctx.shadowBlur=0; ctx.textAlign='left';
-      ctx.font="700 16px 'Trebuchet MS'"; ctx.fillStyle='#dfe8ff'; ctx.fillText(it[1], W*0.22, y-5);
-      ctx.font="400 13px 'Trebuchet MS'"; ctx.fillStyle='rgba(165,180,215,.92)'; ctx.fillText(it[2], W*0.22, y+15);
-      ctx.restore();
-    }
-    center('Parmağını sürükle → hareket + nişan', H*0.82, 13, 'rgba(150,170,210,.85)', 4);
-    if(howtoThenPlay) button('▶  ANLADIM, BAŞLA', H*0.92, Math.min(320,W*0.8), 58, ()=>{ localStorage.setItem('nc_guide','1'); startGame(); }, 160);
-    else button('←  GERİ', H*0.92, Math.min(240,W*0.6), 54, ()=>goto(ST.SETTINGS), 200);
-  }
+  if(state===ST.HOWTO) renderHowto();
   if(state===ST.PLAY||state===ST.PAUSE){
     ctx.save();ctx.textAlign='left';ctx.font="900 54px 'Trebuchet MS'";ctx.fillStyle='#fff';
     ctx.shadowColor=hsl(hue%360,90,60,.8);ctx.shadowBlur=12;ctx.fillText(Math.floor(displayScore),22,66);
