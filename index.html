@@ -158,7 +158,43 @@ function spark(){ // arka plan yıldız tozu (menü/splash)
 }
 
 /* ===================== DURUM ===================== */
-const ST={SPLASH:0,MENU:1,SETTINGS:2,PLAY:3,OVER:4,PAUSE:5,HOWTO:6,REVIVE:7};
+const ST={SPLASH:0,MENU:1,SETTINGS:2,PLAY:3,OVER:4,PAUSE:5,HOWTO:6,REVIVE:7,STORE:8};
+let gems=+localStorage.getItem('nc_gems')||0;             // mağaza para birimi (gerçek parayla/promo/reklamla alınır)
+function saveGems(){ localStorage.setItem('nc_gems',gems); }
+function addGems(n){ gems+=n; saveGems(); }
+function addHearts(n){ lives=clamp((loadLives())+n,0,5); localStorage.setItem('nc_lives',lives); }
+let storeMsg='', storeMsgT=0;
+function toast(m){ storeMsg=m; storeMsgT=2.4; }
+/* PROMO KODLAR — buradan ekle/değiştir. Her kod oyuncu başına 1 kez. */
+const PROMO={ 'FLORENTIA':{gems:100,msg:'+100 💎'}, 'FIRST':{hearts:2,msg:'+2 ❤️'}, 'SONIC':{gems:50,boost:1,msg:'+50 💎 + güç paketi'} };
+function redeemPromo(){
+  let c=(prompt('Promo kodu gir:')||'').trim().toUpperCase(); if(!c) return;
+  const used=JSON.parse(localStorage.getItem('nc_promo')||'[]');
+  if(used.includes(c)){ toast('Bu kod zaten kullanıldı'); return; }
+  const p=PROMO[c]; if(!p){ toast('Geçersiz kod'); return; }
+  if(p.gems)addGems(p.gems); if(p.hearts)addHearts(p.hearts); if(p.boost)localStorage.setItem('nc_boost','1');
+  used.push(c); localStorage.setItem('nc_promo',JSON.stringify(used)); Audio.record(); toast('KOD: '+(p.msg||'ödül verildi'));
+}
+/* NATIVE kancalar (Android sarmalayıcı Play Billing/AdMob ile doldurur). Web'de test: doğrudan verir. */
+function buyGems(pack){ const packs={small:{gems:120,price:'₺29'},mid:{gems:650,price:'₺99'},big:{gems:1500,price:'₺199'}}, p=packs[pack];
+  if(window.Android&&Android.purchase){ try{ Android.purchase('gems_'+pack); }catch(e){} return; }
+  addGems(p.gems); Audio.gold(); toast('+'+p.gems+' 💎 (web test)'); }   // gerçek tahsilat sarmalayıcıda
+function watchAd(){ if(window.Android&&Android.rewardedAd){ try{ Android.rewardedAd(); }catch(e){} return; }
+  addGems(25); Audio.gold(); toast('+25 💎 (reklam — web test)'); }
+/* SÜRPRİZ SANDIKLAR — ekonomi-güvenli: beklenen değer ≈ maliyetin biraz altı, küçük jackpot şansı */
+const CHESTS={
+  mini:{cost:30,name:'Mini Sandık',rewards:[[58,'gems',[15,28]],[26,'gems',[30,30]],[11,'hearts',1],[4,'boost',1],[1,'gems',[120,120]]]},
+  super:{cost:80,name:'Sürpriz Sandık',rewards:[[50,'gems',[45,75]],[24,'gems',[85,85]],[16,'hearts',1],[7,'boost',1],[3,'gems',[300,300]]]},
+  efsane:{cost:200,name:'Efsane Sandık',rewards:[[48,'gems',[130,190]],[24,'hearts',2],[16,'boost',1],[9,'gems',[260,260]],[3,'gems',[700,700]]]},
+};
+function openChest(key){ const c=CHESTS[key]; if(gems<c.cost){ toast('Yetersiz 💎'); return; } addGems(-c.cost);
+  let r=Math.random()*100, pick=c.rewards[c.rewards.length-1]; for(const rw of c.rewards){ r-=rw[0]; if(r<=0){ pick=rw; break; } }
+  const [,kind,val]=pick; let m='';
+  if(kind==='gems'){ const g=Array.isArray(val)?Math.round(rand(val[0],val[1])):val; addGems(g); m='+'+g+' 💎'; }
+  else if(kind==='hearts'){ addHearts(val); m='+'+val+' ❤️'; }
+  else { localStorage.setItem('nc_boost','1'); m='⚡ Güç Paketi'; }
+  Audio.record(); zoomPunch(1.15); burst(W/2,H*0.4,'255,215,90',40,700,1); toast(c.name+': '+m);
+}
 let howtoThenPlay=false;   // kılavuzdan sonra oyuna mı başlanacak (ilk oynayış)
 const LIFE_MS=30*60*1000;  // her can GERÇEK ZAMANDA yarım saatte 1 dolar
 let lives=3, reviveT=0, invuln=0, safeT=0;                 // can / revive geri sayım / dokunulmazlık / güvenli pencere
@@ -186,12 +222,15 @@ function reset(){ particles.clear();fallers.clear();popups.clear();bullets.clear
   shake=0;flash=0;zoom=1;zoomT=1;hitstop=0;fireTimer=0;muzzle=0;
   evBig=20;evCross=60;evMega=100;crossT=0;crossSpawn=0;
   invuln=0;pwShield=0;pwFire=0;cdShield=0;cdFire=0;cdBoom=0;reviveT=0;safeT=0;sonicT=0;timeScale=1;cdSonic=0; }
-function startGame(){ Audio.resume(); reset(); goto(ST.PLAY); }
+function startGame(){ Audio.resume(); reset();
+  if(localStorage.getItem('nc_boost')){ sonicT=6; invuln=5; safeT=2; localStorage.removeItem('nc_boost'); doFlash('255,224,120',0.4); }   // güç paketi: hızlı+korumalı başlangıç
+  goto(ST.PLAY); }
 function gameOver(){ goto(ST.OVER); Audio.hit(); shake=Math.max(shake,28); doFlash('255,60,90',0.8); hitstop=0.12;
   burst(player.x,player.y,'255,70,110',40,900,0.9); buzz([40,30,80]);
   if(score>best){best=score;newRecord=true;localStorage.setItem('nc_best',best);Audio.record();doFlash('120,255,200',0.7);}
   if(bestCombo>bestC){bestC=bestCombo;localStorage.setItem('nc_bestc',bestC);}
-  if(level>bestStage){bestStage=level;localStorage.setItem('nc_beststage',bestStage);} }
+  if(level>bestStage){bestStage=level;localStorage.setItem('nc_beststage',bestStage);}
+  const earned=Math.floor(score/120); if(earned>0) addGems(earned); }   // oyundan gem kazan
 function doFlash(c,a){flashColor=c;flash=Math.max(flash,a);}
 function zoomPunch(z){zoomT=z;}
 /* ---- AŞAMA (STAGE) sistemi ---- */
@@ -323,7 +362,7 @@ function update(dt){
 
   if(state===ST.REVIVE){ reviveT-=dt; if(reviveT<=0) gameOver(); Audio.tick(dt,0.12); return; }   // donmuş sahne + 10sn
   if(state===ST.SPLASH){ spark(); if(stateT>3.2) goto(ST.MENU); Audio.tick(dt,0); return; }
-  if(state===ST.MENU||state===ST.SETTINGS||state===ST.OVER||state===ST.HOWTO){ spark(); Audio.tick(dt, state===ST.OVER?0.15:0.08); return; }
+  if(state===ST.MENU||state===ST.SETTINGS||state===ST.OVER||state===ST.HOWTO||state===ST.STORE){ if(storeMsgT>0)storeMsgT-=dt; spark(); Audio.tick(dt, state===ST.OVER?0.15:0.08); return; }
 
   // PLAY
   if(hitstop>0){ hitstop-=dt; Audio.tick(dt,0.25); return; }
@@ -648,8 +687,9 @@ function render(){
     center('and', H*0.265, sz*0.42, 'rgba(255,150,205,.95)',12);
     center('FIRST', H*0.33, sz, hsl(GAME.accent,90,68),26);
     ctx.restore();
-    button('▶  OYNA', H*0.58, Math.min(300,W*0.7), 64, ()=>{ if(localStorage.getItem('nc_guide')) startGame(); else { howtoThenPlay=true; goto(ST.HOWTO); } }, 160);
-    button('⚙  AYARLAR', H*0.69, Math.min(300,W*0.7), 56, ()=>goto(ST.SETTINGS), 280);
+    button('▶  OYNA', H*0.55, Math.min(300,W*0.7), 60, ()=>{ if(localStorage.getItem('nc_guide')) startGame(); else { howtoThenPlay=true; goto(ST.HOWTO); } }, 160);
+    button('🛒  MAĞAZA', H*0.645, Math.min(300,W*0.7), 54, ()=>goto(ST.STORE), 50);
+    button('⚙  AYARLAR', H*0.735, Math.min(300,W*0.7), 50, ()=>goto(ST.SETTINGS), 280);
     if(best>0) center('rekor '+best+'  ·  aşama '+bestStage+'  ·  kombo x'+bestC, H*0.8, 15,'rgba(150,170,210,.8)',6);
     drawLives(W/2-29, H*0.87, 17);
     if(lives<3){ const ms=nextLifeMs(), mm=Math.floor(ms/60000), ss=Math.floor((ms%60000)/1000);
@@ -666,6 +706,21 @@ function render(){
     button('←  GERİ', H*0.84, Math.min(220,W*0.6), 52, ()=>goto(ST.MENU), 200);
   }
   if(state===ST.HOWTO) renderHowto();
+  if(state===ST.STORE){
+    ctx.fillStyle='rgba(5,6,15,0.9)'; ctx.fillRect(0,0,W,H);
+    center('🛒  MAĞAZA', H*0.07, Math.min(34,W*0.085), '#fff', 14);
+    center('💎  '+gems, H*0.125, Math.min(30,W*0.075), 'rgba(120,240,255,.95)', 10);
+    const x0=0.205, st=0.092, h=Math.min(50,H*0.062), bw=Math.min(340,W*0.84);
+    button('❤️  Kalp Al — 50💎', H*x0, bw, h, ()=>{ if(gems>=50){addGems(-50);addHearts(1);Audio.gold();toast('+1 ❤️  (toplam '+lives+')');}else toast('Yetersiz 💎'); }, 340);
+    button('🎁  Mini Sandık — 30💎', H*(x0+st), bw, h, ()=>openChest('mini'), 280);
+    button('🎁  Sürpriz Sandık — 80💎', H*(x0+st*2), bw, h, ()=>openChest('super'), 280);
+    button('🎁  Efsane Sandık — 200💎', H*(x0+st*3), bw, h, ()=>openChest('efsane'), 45);
+    button('📺  Reklam İzle  →  +25💎', H*(x0+st*4), bw, h, watchAd, 160);
+    button('💎  Gem Satın Al (₺)', H*(x0+st*5), bw, h, ()=>buyGems('mid'), 200);
+    button('🎟️  Promo Kod', H*(x0+st*6), bw, h, redeemPromo, 190);
+    button('←  GERİ', H*(x0+st*7), Math.min(220,W*0.58), 46, ()=>goto(ST.MENU), 200);
+    if(storeMsgT>0) center(storeMsg, H*0.965, 15, 'rgba(255,235,150,'+clamp(storeMsgT,0,1)+')', 8);
+  }
   if(state===ST.PLAY||state===ST.PAUSE){
     ctx.save();ctx.textAlign='left';ctx.font="900 54px 'Trebuchet MS'";ctx.fillStyle='#fff';
     ctx.shadowColor=hsl(hue%360,90,60,.8);ctx.shadowBlur=12;ctx.fillText(Math.floor(displayScore),22,66);
