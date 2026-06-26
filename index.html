@@ -200,8 +200,9 @@ const LIFE_MS=30*60*1000;  // her can GERÇEK ZAMANDA yarım saatte 1 dolar
 let lives=3, reviveT=0, invuln=0, safeT=0;                 // can / revive geri sayım / dokunulmazlık / güvenli pencere
 let pwShield=0, pwFire=0, cdShield=0, cdFire=0, cdBoom=0;  // süper güç: aktif süre + cooldown
 let sonicT=0, timeScale=1, cdSonic=0;                     // SÜPER SONIC: 10sn tüm oyun hızlanır, sonra yavaşça normale
+let fbT=0, fbR=0, cdFb=0;                                 // ATEŞ TOPU: vurulamazlar dahil her şeyi yok eden alev topu
 let powerBtns=[];          // alttaki süper güç butonları (dokunma testi)
-const PW_CD=22, BOOM_CD=32, SONIC_CD=34;  // güç bekleme süreleri (sn)
+const PW_CD=22, BOOM_CD=32, SONIC_CD=34, FB_CD=36;  // güç bekleme süreleri (sn)
 let state=ST.SPLASH, t=0, stateT=0;
 let score=0,displayScore=0,combo=1,bestCombo=1,elapsed=0,spawnTimer=0,difficulty=0;
 let level=1,levelBase=0,levelGoal=300,levelUpT=0,mineSeen=false;   // AŞAMA + vurulamaz mayın
@@ -221,7 +222,7 @@ function reset(){ particles.clear();fallers.clear();popups.clear();bullets.clear
   player.x=player.tx=pointerX=W/2; player.y=H-Math.max(110,H*0.16); player.trail.length=0;
   shake=0;flash=0;zoom=1;zoomT=1;hitstop=0;fireTimer=0;muzzle=0;
   evBig=20;evCross=60;evMega=100;crossT=0;crossSpawn=0;
-  invuln=0;pwShield=0;pwFire=0;cdShield=0;cdFire=0;cdBoom=0;reviveT=0;safeT=0;sonicT=0;timeScale=1;cdSonic=0; }
+  invuln=0;pwShield=0;pwFire=0;cdShield=0;cdFire=0;cdBoom=0;reviveT=0;safeT=0;sonicT=0;timeScale=1;cdSonic=0;fbT=0;fbR=0;cdFb=0; }
 function startGame(){ Audio.resume(); reset();
   if(localStorage.getItem('nc_boost')){ sonicT=6; invuln=5; safeT=2; localStorage.removeItem('nc_boost'); doFlash('255,224,120',0.4); }   // güç paketi: hızlı+korumalı başlangıç
   goto(ST.PLAY); }
@@ -322,6 +323,14 @@ function destroyer(){
     burst(f.x,f.y,'255,240,180',12,620,0.6); f.dead=true; });
   if(gained>0){ score+=gained; combo++; bestCombo=Math.max(bestCombo,combo); popup(W/2,H*0.4,'YOK ETTİN +'+gained,'255,240,160',true); }
 }
+/* ATEŞ TOPU — vurulamazlar dahil ekrandaki HER ŞEYİ yakar + büyük titreşim */
+function fireball(){
+  fbT=0.6; fbR=0; shake=Math.max(shake,34); doFlash('255,140,40',0.9); zoomPunch(1.38); hitstop=0.12;
+  Audio.hit(); Audio.record(); buzz([70,40,70,40,90]);
+  popup(W/2,H*0.36,'🔥 ATEŞ TOPU!','255,150,60',true);
+  let n=0; fallers.each(f=>{ if(f.dead)return; n++; burst(f.x,f.y,'255,'+(120+((Math.random()*80)|0))+',40',18,720,0.8); f.dead=true; }); bullets.clear();
+  if(n>0){ score+=n*8; }
+}
 
 /* ===================== INPUT + BUTONLAR ===================== */
 let BTNS=[]; let pauseBtn={x:1e9,y:1e9,w:0,h:0};
@@ -370,7 +379,8 @@ function update(dt){
   difficulty=clamp(0.16*(level-1)+elapsed/120,0,1.8);     // her aşama belirgin hızlanma
   displayScore=lerp(displayScore,score,0.2);
   if(invuln>0)invuln-=dt; if(pwShield>0)pwShield-=dt; if(pwFire>0)pwFire-=dt;   // güç süreleri
-  if(cdShield>0)cdShield-=dt; if(cdFire>0)cdFire-=dt; if(cdBoom>0)cdBoom-=dt; if(cdSonic>0)cdSonic-=dt;   // bekleme süreleri
+  if(cdShield>0)cdShield-=dt; if(cdFire>0)cdFire-=dt; if(cdBoom>0)cdBoom-=dt; if(cdSonic>0)cdSonic-=dt; if(cdFb>0)cdFb-=dt;   // bekleme süreleri
+  if(fbT>0){ fbT-=dt; fbR=lerp(fbR, Math.hypot(W,H), 0.2); }                                              // ateş topu dalgası genişler
   player.tx=pointerActive?pointerX:player.x;
   const dx=player.tx-player.x; player.x+=dx*Math.min(1,14*dt);
   const spd=Math.abs(dx);
@@ -616,6 +626,9 @@ function powerIcon(icon,x,y,s){ ctx.save(); ctx.translate(x,y);
   else if(icon==='boom'){ star(0,0,s,s*0.42,8,'255,210,120'); }
   else if(icon==='fire'){ ctx.fillStyle='#9effc8'; ctx.beginPath(); ctx.moveTo(s*0.1,-s); ctx.lineTo(-s*0.5,s*0.15); ctx.lineTo(-s*0.05,s*0.15); ctx.lineTo(-s*0.25,s); ctx.lineTo(s*0.55,-s*0.2); ctx.lineTo(s*0.05,-s*0.2); ctx.closePath(); ctx.fill(); }
   else if(icon==='sonic'){ ctx.fillStyle='#ffe07a'; for(let k=0;k<2;k++){ const o=-s*0.45+k*s*0.6; ctx.beginPath(); ctx.moveTo(o-s*0.25,-s*0.7); ctx.lineTo(o+s*0.35,0); ctx.lineTo(o-s*0.25,s*0.7); ctx.lineTo(o+s*0.05,s*0.7); ctx.lineTo(o+s*0.65,0); ctx.lineTo(o+s*0.05,-s*0.7); ctx.closePath(); ctx.fill(); } }
+  else if(icon==='fireball'){ ctx.shadowColor='rgba(255,120,40,.9)';ctx.shadowBlur=8;ctx.fillStyle='#ff7a2a'; ctx.beginPath();ctx.arc(0,s*0.25,s*0.62,0,7);ctx.fill();
+    ctx.fillStyle='#ffd34a'; ctx.beginPath();ctx.moveTo(0,-s*0.95);ctx.quadraticCurveTo(s*0.5,-s*0.1,0,s*0.4);ctx.quadraticCurveTo(-s*0.5,-s*0.1,0,-s*0.95);ctx.fill();
+    ctx.fillStyle='#fff2c0';ctx.beginPath();ctx.arc(0,s*0.3,s*0.26,0,7);ctx.fill(); }
   ctx.restore();
 }
 function drawPowerBtn(x,y,r,d){ const ready=d.cd<=0;
@@ -630,14 +643,15 @@ function drawPowerBtn(x,y,r,d){ const ready=d.cd<=0;
   ctx.restore();
 }
 function drawPowerBtns(){
-  powerBtns=[]; const r=Math.min(26,W*0.066), y=H-r-16, gap=Math.min(80,W*0.21), cx=W/2;
+  powerBtns=[]; const r=Math.min(24,W*0.06), y=H-r-14, gap=Math.min(70,W*0.185), cx=W/2;
   const defs=[
     {icon:'shield', cd:cdShield, max:PW_CD, on:pwShield>0, action:()=>{ if(cdShield<=0){ pwShield=4; invuln=Math.max(invuln,4); cdShield=PW_CD; doFlash('120,200,255',0.3); Audio.milestone(); buzz(20); } }},
     {icon:'sonic', cd:cdSonic, max:SONIC_CD, on:sonicT>0, action:()=>{ if(cdSonic<=0){ sonicT=10; cdSonic=SONIC_CD; doFlash('255,224,120',0.4); Audio.gold(); zoomPunch(1.18); shake=Math.max(shake,10); popup(W/2,H*0.4,'⚡ SÜPER SONIC!','255,224,120',true); buzz([20,30,20]); } }},
+    {icon:'fireball', cd:cdFb, max:FB_CD, on:fbT>0, action:()=>{ if(cdFb<=0){ fireball(); cdFb=FB_CD; } }},
     {icon:'boom', cd:cdBoom, max:BOOM_CD, on:false, action:()=>{ if(cdBoom<=0){ destroyer(); cdBoom=BOOM_CD; } }},
     {icon:'fire', cd:cdFire, max:PW_CD, on:pwFire>0, action:()=>{ if(cdFire<=0){ pwFire=5; cdFire=PW_CD; doFlash('150,255,210',0.3); Audio.gold(); buzz(20); } }},
   ];
-  const xs=[cx-gap*1.5,cx-gap*0.5,cx+gap*0.5,cx+gap*1.5];
+  const xs=[cx-gap*2,cx-gap,cx,cx+gap,cx+gap*2];
   defs.forEach((d,i)=>{ powerBtns.push({x:xs[i],y,r,action:d.action}); drawPowerBtn(xs[i],y,r,d); });
 }
 function drawLives(x,y,s){ for(let i=0;i<3;i++) drawHeart(x+i*(s+8), y, s, i<lives); }
@@ -785,6 +799,10 @@ function render(){
       button('☰  MENÜ', H*0.83, Math.min(280,W*0.66), 52, ()=>goto(ST.MENU), 280); }
   }
 
+  if(fbT>0){ const a=clamp(fbT/0.6,0,1), cxp=player.x, cyp=player.y; ctx.save();
+    ctx.globalAlpha=a*0.3; const g=ctx.createRadialGradient(cxp,cyp,fbR*0.15,cxp,cyp,fbR); g.addColorStop(0,'rgba(255,170,50,0.55)'); g.addColorStop(1,'rgba(255,70,20,0)'); ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    ctx.globalAlpha=a; ctx.shadowColor='rgba(255,120,30,.9)'; ctx.shadowBlur=30; ctx.lineWidth=16*a+4; ctx.strokeStyle='rgba(255,150,50,'+a+')'; ctx.beginPath(); ctx.arc(cxp,cyp,fbR,0,7); ctx.stroke();
+    ctx.globalAlpha=a*0.6; ctx.lineWidth=7*a+2; ctx.strokeStyle='rgba(255,235,130,'+a+')'; ctx.beginPath(); ctx.arc(cxp,cyp,fbR*0.66,0,7); ctx.stroke(); ctx.restore(); }
   if(timeScale>1.12 && state===ST.PLAY){ ctx.save(); ctx.globalAlpha=clamp((timeScale-1)*0.6,0,0.55); ctx.strokeStyle='rgba(255,224,120,0.9)'; ctx.lineWidth=2; ctx.shadowColor='rgba(255,224,120,.8)'; ctx.shadowBlur=6;
     for(let i=0;i<11;i++){ const yy=(t*1100+i*89)%H; ctx.beginPath(); ctx.moveTo(0,yy); ctx.lineTo(70,yy); ctx.moveTo(W-70,(yy+40)%H); ctx.lineTo(W,(yy+40)%H); ctx.stroke(); }
     ctx.restore(); ctx.save(); ctx.globalAlpha=clamp((timeScale-1)*0.3,0,0.25); ctx.fillStyle='rgba(255,200,60,1)';
