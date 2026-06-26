@@ -25,6 +25,8 @@
    Reskin, baştaki HTML işaretçisi yerine window.GAME_CONFIG yazar. Yoksa varsayılan NEON CATCH. */
 const GAME = Object.assign({
   name: "NEON CATCH",      // oyun adı (menüde 2 kelimeyse 2 satır)
+  brand: "FLORENTIA",      // STÜDYO markası (white-label — alıcı kendi markasını koyar)
+  tagline: "GAMES",        // marka alt yazısı
   hue: 190,                // ana renk tonu (arka plan + başlık)
   accent: 320,             // vurgu tonu (ikinci başlık satırı)
   player: "130,255,210",   // oyuncu küresi rengi (r,g,b)
@@ -159,7 +161,7 @@ function spark(){ // arka plan yıldız tozu (menü/splash)
 const ST={SPLASH:0,MENU:1,SETTINGS:2,PLAY:3,OVER:4,PAUSE:5,HOWTO:6,REVIVE:7};
 let howtoThenPlay=false;   // kılavuzdan sonra oyuna mı başlanacak (ilk oynayış)
 const LIFE_MS=30*60*1000;  // her can GERÇEK ZAMANDA yarım saatte 1 dolar
-let lives=3, reviveT=0, invuln=0;                          // can / revive geri sayım / dokunulmazlık
+let lives=3, reviveT=0, invuln=0, safeT=0;                 // can / revive geri sayım / dokunulmazlık / güvenli pencere
 let pwShield=0, pwFire=0, cdShield=0, cdFire=0, cdBoom=0;  // süper güç: aktif süre + cooldown
 let powerBtns=[];          // alttaki süper güç butonları (dokunma testi)
 const PW_CD=22, BOOM_CD=32;  // güç bekleme süreleri (sn)
@@ -182,7 +184,7 @@ function reset(){ particles.clear();fallers.clear();popups.clear();bullets.clear
   player.x=player.tx=pointerX=W/2; player.y=H-Math.max(110,H*0.16); player.trail.length=0;
   shake=0;flash=0;zoom=1;zoomT=1;hitstop=0;fireTimer=0;muzzle=0;
   evBig=20;evCross=60;evMega=100;crossT=0;crossSpawn=0;
-  invuln=0;pwShield=0;pwFire=0;cdShield=0;cdFire=0;cdBoom=0;reviveT=0; }
+  invuln=0;pwShield=0;pwFire=0;cdShield=0;cdFire=0;cdBoom=0;reviveT=0;safeT=0; }
 function startGame(){ Audio.resume(); reset(); goto(ST.PLAY); }
 function gameOver(){ goto(ST.OVER); Audio.hit(); shake=Math.max(shake,28); doFlash('255,60,90',0.8); hitstop=0.12;
   burst(player.x,player.y,'255,70,110',40,900,0.9); buzz([40,30,80]);
@@ -265,8 +267,9 @@ function die(){
   if(lives>0){ reviveT=10; goto(ST.REVIVE); } else gameOver();
 }
 function revive(){
-  spendLife(); invuln=2.6;
+  spendLife(); invuln=3.6; safeT=2.6;                   // uzun dokunulmazlık + 2.6sn yeni tehlike YOK (kaçacak yer kalsın)
   fallers.each(f=>{ f.dead=true; }); bullets.clear();   // ekranı temizle, oradan devam
+  player.x=player.tx=pointerX=W/2;                       // oyuncuyu ortaya al (güvenli)
   doFlash(GAME.player,0.5); Audio.milestone(); zoomPunch(1.15); buzz([15,25,15]);
   goto(ST.PLAY);
 }
@@ -335,12 +338,13 @@ function update(dt){
   player.sy=lerp(player.sy,1-clamp(spd*0.003,0,0.25),0.2);
   player.squash=lerp(player.squash,1,0.15);
   player.trail.unshift({x:player.x,y:player.y}); if(player.trail.length>14)player.trail.pop();
+  if(safeT>0) safeT-=dt;                                  // güvenli pencere: yeni tehlike yok
   spawnTimer-=dt; const interval=clamp(0.62-difficulty*0.34,0.24,0.62);
-  if(spawnTimer<=0){ spawnTimer=interval*rand(0.7,1.15); spawn(); }
-  // ZAMANLI BÜYÜK OLAYLAR
-  evBig-=dt;   if(evBig<=0){   evBig=20;  spawnBoss(); }
+  if(spawnTimer<=0){ spawnTimer=interval*rand(0.7,1.15); if(safeT<=0) spawn(); }
+  // ZAMANLI BÜYÜK OLAYLAR (güvenli pencerede ertelenir)
+  evBig-=dt;   if(evBig<=0){   evBig=20;  if(safeT<=0) spawnBoss(); }
   evMega-=dt;  if(evMega<=0){  evMega=100; spawnMega(); }
-  evCross-=dt; if(evCross<=0){ evCross=60; startCrossfire(); }
+  evCross-=dt; if(evCross<=0){ evCross=60; if(safeT<=0) startCrossfire(); }
   if(crossT>0){ crossT-=dt; crossSpawn-=dt; if(crossSpawn<=0){ crossSpawn=0.5; spawnCrossPair(); } }
   // TABANCA: namludan otomatik mermi akışı + mermi-tehlike çarpışması
   fireTimer-=dt; if(muzzle>0)muzzle=Math.max(0,muzzle-dt*6);
@@ -622,24 +626,25 @@ function render(){
     const a1=easeOut(clamp(stateT/0.7,0,1)), a2=easeOut(clamp((stateT-0.7)/0.7,0,1));
     const out=clamp((stateT-2.6)/0.6,0,1); const fade=1-out;
     ctx.globalAlpha=fade;
-    center('FLORENTIA', H*0.44, Math.min(64,W*0.13)*(0.9+0.1*a1), hsl(190,90,65), 30, a1);
-    // alt çizgi
-    if(a1>0.5){ const lw=Math.min(260,W*0.55)*easeOut(clamp((stateT-0.5)/0.6,0,1));
+    const tz=Math.min(46,W*0.1)*(0.92+0.08*a1);
+    center('FIRST', H*0.355, tz, hsl(190,90,65), 28, a1);
+    center('and', H*0.41, tz*0.42, 'rgba(255,150,205,.95)', 12, a1);
+    center('FLORENTIA', H*0.465, tz, hsl(320,90,68), 28, a1);
+    if(a1>0.5){ const lw=Math.min(280,W*0.6)*easeOut(clamp((stateT-0.5)/0.6,0,1));
       ctx.save();ctx.globalAlpha=fade;ctx.strokeStyle=hsl(320,90,68,.9);ctx.lineWidth=3;ctx.shadowColor=hsl(320,90,68,.8);ctx.shadowBlur=14;
-      ctx.beginPath();ctx.moveTo(W/2-lw/2,H*0.49);ctx.lineTo(W/2+lw/2,H*0.49);ctx.stroke();ctx.restore(); }
-    center('— GAMES —', H*0.55, 18, 'rgba(180,200,240,.9)', 8, a2);
+      ctx.beginPath();ctx.moveTo(W/2-lw/2,H*0.53);ctx.lineTo(W/2+lw/2,H*0.53);ctx.stroke();ctx.restore(); }
+    center('— '+GAME.tagline+' —', H*0.59, 16, 'rgba(180,200,240,.9)', 8, a2);
     ctx.globalAlpha=1;
     center('dokun ▶ atla', H*0.92, 14, 'rgba(150,170,210,.5)', 4, a2);
   }
   if(state===ST.MENU){
     const ap=easeOutBack(clamp(stateT/0.5,0,1));
     ctx.save();ctx.translate(W/2,H*0.3);ctx.scale(ap,ap);ctx.translate(-W/2,-H*0.3);
-    const nm=GAME.name.split(' '), sz=Math.min(92,W*0.21);
-    if(nm.length>=2){ center(nm[0], H*0.26, sz, hsl(GAME.hue,90,65),28);
-      center(nm.slice(1).join(' '), H*0.26+sz*0.92, sz, hsl(GAME.accent,90,68),28); }
-    else center(GAME.name, H*0.30, sz, hsl(GAME.hue,90,65),28);
+    const sz=Math.min(52,W*0.118);
+    center('FIRST', H*0.20, sz, hsl(GAME.hue,90,65),26);
+    center('and', H*0.265, sz*0.42, 'rgba(255,150,205,.95)',12);
+    center('FLORENTIA', H*0.33, sz, hsl(GAME.accent,90,68),26);
     ctx.restore();
-    center('BY FLORENTIA', H*0.43, 16, 'rgba(180,200,240,.85)', 8);
     button('▶  OYNA', H*0.58, Math.min(300,W*0.7), 64, ()=>{ if(localStorage.getItem('nc_guide')) startGame(); else { howtoThenPlay=true; goto(ST.HOWTO); } }, 160);
     button('⚙  AYARLAR', H*0.69, Math.min(300,W*0.7), 56, ()=>goto(ST.SETTINGS), 280);
     if(best>0) center('rekor '+best+'  ·  aşama '+bestStage+'  ·  kombo x'+bestC, H*0.8, 15,'rgba(150,170,210,.8)',6);
@@ -695,7 +700,7 @@ function render(){
     button('☰  MENÜ', H*0.85, Math.min(260,W*0.64), 50, ()=>goto(ST.MENU), 200);
   }
   if(state===ST.REVIVE){
-    ctx.fillStyle='rgba(5,6,15,0.6)'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='rgba(5,6,15,0.84)'; ctx.fillRect(0,0,W,H);
     center('DEVAM ET?', H*0.22, Math.min(40,W*0.1), '#fff', 16);
     center('bir kalp harca, kaldığın yerden devam et', H*0.28, 14, 'rgba(200,210,240,.9)', 6);
     const hr=Math.min(64,W*0.17), hy=H*0.45;
