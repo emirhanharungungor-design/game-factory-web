@@ -183,6 +183,17 @@ function buyGems(p){   // p: GEMPACKS öğesi. Gerçek tahsilat native (Play Bil
   addGems(p.gems); Audio.gold(); toast('+'+p.gems+' 💎 ('+p.price+' — web test)'); }
 function watchAd(){ if(window.Android&&Android.rewardedAd){ try{ Android.rewardedAd(); }catch(e){} return; }
   addGems(25); Audio.gold(); toast('+25 💎 (reklam — web test)'); }
+/* REKLAM KALDIRMA — tek seferlik gerçek-para satın alma (99,99 TL). Reklam SADECE ölünce çıkar. */
+let noAds=localStorage.getItem('nc_noads')==='1';
+function grantNoAds(){ noAds=true; localStorage.setItem('nc_noads','1'); }
+window.grantNoAds=grantNoAds;   // native satın alma başarılı olunca çağırır
+function buyNoAds(){ if(noAds){ toast('Reklamsız zaten aktif ✓'); return; }
+  if(window.Android&&Android.purchase){ try{ Android.purchase('noads'); }catch(e){} return; }
+  grantNoAds(); Audio.gold&&Audio.gold(); toast('Reklamlar kaldırıldı (web test) ✓'); }
+try{ if(window.Android&&Android.hasNoAds&&Android.hasNoAds()){ grantNoAds(); } }catch(e){}   // cihazda zaten alınmışsa geri yükle
+window.grantGems=function(n){ n=+n||0; if(n>0){ addGems(n); Audio.gold&&Audio.gold(); toast('+'+n+' 💎 ✓'); } };   // Play Billing gems satın alma başarılı
+window.rewardGems=function(n){ n=+n||25; addGems(n); Audio.gold&&Audio.gold(); toast('+'+n+' 💎 (reklam)'); };   // ödüllü reklam izlendi
+function showDeathAd(){ if(noAds) return; if(window.Android&&Android.gameOver){ try{ Android.gameOver(); }catch(e){} } }   // ÖLÜNCE geçiş reklamı (reklamsızda gösterme)
 /* SÜRPRİZ SANDIKLAR — ekonomi-güvenli: beklenen değer ≈ maliyetin biraz altı, küçük jackpot şansı */
 const CHESTS={
   mini:{cost:30,name:'Mini Sandık',rewards:[[50,'gems',[15,28]],[22,'gems',[30,30]],[11,'hearts',1],[10,'power',1],[5,'skin','common'],[2,'gems',[120,120]]]},
@@ -397,6 +408,7 @@ const LTIERS=[ {name:'Şampiyon',col:'255,120,40',from:0,to:1}, {name:'Elmas',co
 let state=ST.SPLASH, t=0, stateT=0;
 let score=0,displayScore=0,combo=1,bestCombo=1,elapsed=0,spawnTimer=0,difficulty=0;
 let level=1,levelBase=0,levelGoal=300,levelUpT=0,mineSeen=false;   // AŞAMA + vurulamaz mayın
+let checkpointStage=0, checkpointScore=0, goldenCP=3, cpBanT=0;     // CHECKPOINT: her 10 aşamada bir; 3 ölünce başa değil son checkpoint'e dön
 let best=+localStorage.getItem('nc_best')||0, bestC=+localStorage.getItem('nc_bestc')||0, newRecord=false;
 let bestStage=+localStorage.getItem('nc_beststage')||1;
 let shake=0,flash=0,flashColor='255,255,255',zoom=1,zoomT=1,hitstop=0,bgPulse=0,hue=GAME.hue;
@@ -410,6 +422,7 @@ function goto(s){ stateT=0; state=s; if(s===ST.MENU||s===ST.OVER) lives=loadLive
 function reset(){ particles.clear();fallers.clear();popups.clear();bullets.clear();
   score=0;displayScore=0;combo=1;bestCombo=1;elapsed=0;spawnTimer=0;difficulty=0;newRecord=false;
   level=1;levelBase=0;levelGoal=goalFor(1);levelUpT=0;mineSeen=false;
+  checkpointStage=0;checkpointScore=0;goldenCP=3;cpBanT=0;
   player.x=player.tx=pointerX=W/2; player.y=H-Math.max(110,H*0.16); player.trail.length=0;
   shake=0;flash=0;zoom=1;zoomT=1;hitstop=0;fireTimer=0;muzzle=0;
   evBig=20;evCross=60;evMega=100;crossT=0;crossSpawn=0;
@@ -432,6 +445,7 @@ function gameOver(){ goto(ST.OVER); Audio.hit(); shake=Math.max(shake,28); doFla
   overMsg = (newRecord&&(longRun||bigScore)) ? pickLine(OVER_EPIC) : newRecord ? pickLine(OVER_RECORD) : pickLine(OVER_NORMAL);
   const earned=Math.floor(score/120); if(earned>0) addGems(earned);
   if(window.Android && Android.submitScore){ try{ Android.submitScore(score); }catch(e){} }   // Play Games Services'e skor gönder
+  showDeathAd();   // SADECE ölünce geçiş reklamı (reklamsız alındıysa atlanır)
 }
 function doFlash(c,a){flashColor=c;flash=Math.max(flash,a);}
 function zoomPunch(z){zoomT=z;}
@@ -443,6 +457,19 @@ function levelUp(){
   Audio.record(); zoomPunch(1.22); shake=Math.max(shake,16); doFlash('180,140,255',0.55); hitstop=0.18;
   burst(W/2,H*0.40,'200,150,255',46,760,1.0); burst(W/2,H*0.40,GAME.orb,24,520,0.8);
   buzz([20,30,20,40]);
+  if(level%10===0){ checkpointStage=level; checkpointScore=score; cpBanT=2.4;   // ALTIN CHECKPOINT
+    doFlash('255,215,90',0.6); zoomPunch(1.3); shake=Math.max(shake,22); burst(W/2,H*0.4,'255,215,90',60,900,1.1); buzz([30,40,30,50]);
+    popup(W/2,H*0.46,'🏅 CHECKPOINT! Aşama '+level,'255,215,90',true); }
+}
+/* 3 can bitince: en başa değil son ALTIN CHECKPOINT'e dön (3 hak). */
+function useCheckpoint(){ if(goldenCP<=0 || checkpointStage<10) return; goldenCP--;
+  level=checkpointStage; score=checkpointScore; displayScore=score; levelBase=checkpointScore; levelGoal=goalFor(level); levelUpT=0;
+  lives=3; localStorage.setItem('nc_lives',3); localStorage.setItem('nc_lifeTs',Date.now());
+  combo=1; invuln=3.5; safeT=2.6; reviveT=0;
+  fallers.each(f=>{f.dead=true;}); bullets.clear(); player.x=player.tx=pointerX=W/2;
+  doFlash('255,215,90',0.6); Audio.milestone&&Audio.milestone(); zoomPunch(1.2); shake=Math.max(shake,14); buzz([20,30,20]);
+  popup(W/2,H*0.4,'🏅 Aşama '+level+'’den DEVAM!','255,215,90',true);
+  goto(ST.PLAY);
 }
 /* ---- toplama / vurma (hem dokunuş hem mermi kullanır) ---- */
 function collectFaller(f){
@@ -584,7 +611,7 @@ function update(dt){
 
   // PLAY
   if(hitstop>0){ hitstop-=dt; Audio.tick(dt,0.25); return; }
-  elapsed+=dt; if(levelUpT>0)levelUpT-=dt;
+  elapsed+=dt; if(levelUpT>0)levelUpT-=dt; if(cpBanT>0)cpBanT-=dt;
   difficulty=clamp(0.16*(level-1)+elapsed/120,0,1.8);     // her aşama belirgin hızlanma
   displayScore=lerp(displayScore,score,0.2);
   if(invuln>0)invuln-=dt; if(pwShield>0)pwShield-=dt; if(pwFire>0)pwFire-=dt;   // SADECE aktif etki süreleri (cooldown yok)
@@ -1149,15 +1176,26 @@ function render(){
           rr(cx+cwd-bw-11,ry-bs*0.4,bw+11,bs*1.7,bs); ctx.fillStyle='rgba(255,80,120,.95)'; ctx.fill(); ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.fillText(p.bonus,cx+cwd-bw/2-5.5,ry+bs*0.85); ctx.restore(); } }); }
 
     // ===== PREMIUM KASA (CS:GO tarzı çark) =====
-    { const ry=H*0.545, bh=H*0.10;
+    { const ry=H*0.535, bh=H*0.088;
       ctx.save(); ctx.shadowColor='rgba(255,180,60,.5)'; ctx.shadowBlur=16; rr(x0,ry,cw0,bh,14);
       const g=ctx.createLinearGradient(x0,0,x0+cw0,0); g.addColorStop(0,'rgba(95,40,130,.55)'); g.addColorStop(0.5,'rgba(255,150,40,.32)'); g.addColorStop(1,'rgba(40,90,150,.55)'); ctx.fillStyle=g; ctx.fill();
       ctx.shadowBlur=0; ctx.lineWidth=2.2; ctx.strokeStyle='rgba(255,200,90,'+(0.6+0.3*Math.sin(t*4))+')'; ctx.stroke(); ctx.restore();
       drawChest(x0+bh*0.6, ry+bh*0.5, bh*0.46, 280);
-      txt('PREMIUM KASA', x0+bh*1.15, ry+bh*0.42, Math.min(20,cw0*0.055), '#fff', 'left', 8);
-      txt('Efsane skin (Kral/Samuray) · 3000💎 · güç', x0+bh*1.15, ry+bh*0.74, Math.min(11.5,cw0*0.032), 'rgba(255,220,170,.9)', 'left');
+      txt('PREMIUM KASA', x0+bh*1.15, ry+bh*0.42, Math.min(20,cw0*0.052), '#fff', 'left', 8);
+      txt('Efsane skin (Kral/Samuray) · 3000💎 · güç', x0+bh*1.15, ry+bh*0.76, Math.min(11.5,cw0*0.031), 'rgba(255,220,170,.9)', 'left');
       pricePill(x0+cw0-bh*0.95, ry+bh*0.5, CASE_COST+' 💎', 40, Math.min(13,cw0*0.036));
       BTNS.push({x:x0,y:ry,w:cw0,h:bh,action:openCase}); }
+
+    // ===== REKLAMLARI KALDIR (tek seferlik gerçek para) =====
+    { const ry=H*0.632, bh=H*0.07, on=noAds;
+      ctx.save(); ctx.shadowColor=on?'rgba(120,255,170,.5)':'rgba(90,200,120,.4)'; ctx.shadowBlur=12; rr(x0,ry,cw0,bh,12);
+      const g=ctx.createLinearGradient(x0,0,x0+cw0,0); g.addColorStop(0, on?'rgba(40,120,80,.55)':'rgba(30,90,60,.5)'); g.addColorStop(1,'rgba(12,24,18,.9)'); ctx.fillStyle=g; ctx.fill();
+      ctx.shadowBlur=0; ctx.lineWidth=2; ctx.strokeStyle=on?'rgba(120,255,170,.8)':'rgba(120,220,150,.7)'; ctx.stroke(); ctx.restore();
+      txt('🚫', x0+bh*0.55, ry+bh*0.66, Math.min(26,bh*0.5), '#fff', 'center');
+      txt('REKLAMLARI KALDIR', x0+bh*1.05, ry+bh*0.45, Math.min(17,cw0*0.046), '#fff', 'left', 6);
+      txt(on?'✓ aktif — ömür boyu reklamsız':'tek seferlik · ömür boyu reklamsız', x0+bh*1.05, ry+bh*0.78, Math.min(11,cw0*0.03), on?'rgba(150,255,190,.95)':'rgba(190,235,205,.9)', 'left');
+      pricePill(x0+cw0-bh*1.1, ry+bh*0.5, on?'ALINDI':'₺99,99', on?150:140, Math.min(12.5,cw0*0.034));
+      if(!on) BTNS.push({x:x0,y:ry,w:cw0,h:bh,action:buyNoAds}); }
 
     // ===== ALT SIRA: Güçler · Skinler · Kalp · Reklam · Promo =====
     { const opts=[ {ic:'⚡',t:'Güçler',s:'Satın al',hue:175,a:()=>goto(ST.POWERS)},
@@ -1165,15 +1203,15 @@ function render(){
                    {ic:'❤️',t:'Kalp',s:'50💎',hue:348,a:()=>{ if(gems>=50){addGems(-50);addHearts(1);Audio.gold();toast('+1 ❤️');}else toast('Yetersiz 💎'); }},
                    {ic:'📺',t:'Reklam',s:'+25💎',hue:140,a:watchAd},
                    {ic:'🎟️',t:'Promo',s:'Hediye',hue:225,a:redeemPromo} ];
-      const gap=cw0*0.018, cwd=(cw0-4*gap)/5, chh=H*0.092, ry=H*0.675;
+      const gap=cw0*0.018, cwd=(cw0-4*gap)/5, chh=H*0.085, ry=H*0.715;
       opts.forEach((o,i)=>{ const cx=x0+i*(cwd+gap), cxm=cx+cwd/2;
         shelf(cx,ry,cwd,chh,o.hue,o.a,false);
         txt(o.ic,cxm,ry+chh*0.4,Math.min(22,cwd*0.3),'#fff','center');
         txt(o.t,cxm,ry+chh*0.66,Math.min(13,cwd*0.17),hsl(o.hue,80,82),'center');
         txt(o.s,cxm,ry+chh*0.88,Math.min(10,cwd*0.135),'rgba(255,255,255,.7)','center'); }); }
 
-    button('←  GERİ', H*0.80, Math.min(220,W*0.58), 46, ()=>goto(ST.MENU), 200);
-    if(storeMsgT>0) center(storeMsg, H*0.875, 15, 'rgba(255,235,150,'+clamp(storeMsgT,0,1)+')', 8);
+    button('←  GERİ', H*0.84, Math.min(220,W*0.58), 44, ()=>goto(ST.MENU), 200);
+    if(storeMsgT>0) center(storeMsg, H*0.90, 15, 'rgba(255,235,150,'+clamp(storeMsgT,0,1)+')', 8);
 
     // ===== KART-REVEAL (Clash Royale tarzı sandık açılışı) =====
     if(reveal){ const p=clamp(reveal.t/0.3,0,1), e=1-(1-p)*(1-p);
@@ -1394,6 +1432,7 @@ function render(){
     ctx.fillText(near?'YAKLAŞTIN!':('sonraki: '+remain), W/2, by+22);
     ctx.restore();
     drawLives(W/2-29, 84, 17);                 // 3 kalp (üst orta)
+    if(goldenCP>0){ ctx.save(); ctx.textAlign='right'; ctx.font="900 14px 'Trebuchet MS'"; ctx.fillStyle='rgba(255,215,90,.95)'; ctx.shadowColor='rgba(255,200,70,.7)'; ctx.shadowBlur=6; ctx.fillText('🏅×'+goldenCP, W-16, 30); ctx.restore(); }   // altın checkpoint hakkı
     if(state===ST.PLAY){ drawPauseBtn(); drawPowerBtns(); }
   }
   // AŞAMA geçiş kutlaması (büyük banner)
@@ -1401,6 +1440,11 @@ function render(){
     const a=clamp(levelUpT/1.5,0,1), pop=easeOutBack(clamp((1.5-levelUpT)/0.3,0,1));
     center('AŞAMA '+level, H*0.40, Math.min(72,W*0.17)*pop, hsl(280,90,70), 28, a);
     center('hız artıyor!', H*0.40+46, 19, 'rgba(205,175,255,.95)', 10, a);
+  }
+  if(cpBanT>0 && (state===ST.PLAY||state===ST.PAUSE)){   // ALTIN CHECKPOINT banner
+    const a=clamp(cpBanT/2.4,0,1), pop=easeOutBack(clamp((2.4-cpBanT)/0.35,0,1));
+    center('🏅 CHECKPOINT', H*0.30, Math.min(48,W*0.12)*pop, hsl(46,95,62), 26, a);
+    center('Aşama '+checkpointStage+'’e kaydedildi', H*0.30+38, 16, 'rgba(255,230,150,.95)', 8, a);
   }
   if(state===ST.PAUSE){
     ctx.fillStyle='rgba(5,6,15,0.62)'; ctx.fillRect(0,0,W,H);
@@ -1436,10 +1480,19 @@ function render(){
     center(score, H*0.44, Math.min(64,W*0.16), hsl(190,90,65),20,ap);
     center('aşama '+level+'  ·  en yüksek kombo x'+bestCombo, H*0.52, 19,'rgba(200,180,255,.95)',8,ap);
     center('en iyi aşama '+bestStage+'   ·   rekor '+best, H*0.575, 16,'rgba(150,170,210,.85)',6,ap);
-    if(overMsg) center(overMsg, H*0.645, Math.min(21,W*0.054), newRecord?hsl((t*140)%360,90,68):'rgba(255,214,150,.96)', newRecord?14:8, ap);
-    if(stateT>0.4){ button('▶  TEKRAR', H*0.725, Math.min(280,W*0.66), 58, startGame, 160);
-      button('🏆  SIRALAMA', H*0.80, Math.min(280,W*0.66), 46, ()=>{ if(window.Android&&Android.showLeaderboard){ try{Android.showLeaderboard();}catch(e){} } else goto(ST.LEADER); }, 30);
-      button('☰  MENÜ', H*0.875, Math.min(280,W*0.66), 48, ()=>goto(ST.MENU), 280); }
+    if(overMsg) center(overMsg, H*0.63, Math.min(21,W*0.054), newRecord?hsl((t*140)%360,90,68):'rgba(255,214,150,.96)', newRecord?14:8, ap);
+    const cpAvail = goldenCP>0 && checkpointStage>=10;
+    if(stateT>0.4){
+      if(cpAvail){
+        button('🏅  Aşama '+checkpointStage+'’den DEVAM  ('+goldenCP+' hak)', H*0.70, Math.min(310,W*0.74), 56, useCheckpoint, 46);
+        button('▶  BAŞTAN', H*0.775, Math.min(240,W*0.6), 46, startGame, 160);
+        button('☰  MENÜ', H*0.84, Math.min(240,W*0.6), 44, ()=>goto(ST.MENU), 280);
+      } else {
+        button('▶  TEKRAR', H*0.715, Math.min(280,W*0.66), 56, startGame, 160);
+        button('🏆  SIRALAMA', H*0.79, Math.min(280,W*0.66), 46, ()=>{ if(window.Android&&Android.showLeaderboard){ try{Android.showLeaderboard();}catch(e){} } else goto(ST.LEADER); }, 30);
+        button('☰  MENÜ', H*0.86, Math.min(280,W*0.66), 46, ()=>goto(ST.MENU), 280);
+      }
+    }
   }
 
   if(fb){ const s=fb.w*0.5, fl=1+0.14*Math.sin(t*34);
