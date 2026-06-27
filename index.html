@@ -418,7 +418,9 @@ let evBig=20, evCross=60, evMega=100, crossT=0, crossSpawn=0;   // zamanlı büy
 let player={x:0,y:0,tx:0,r:22,squash:1,sx:1,sy:1,trail:[]};
 resize();
 
-function goto(s){ stateT=0; state=s; if(s===ST.MENU||s===ST.OVER) lives=loadLives(); if(s===ST.SKINS||s===ST.LEADER) viewScroll=0; if(s===ST.HOWTO) howPage=0; }
+function goto(s){ stateT=0; state=s; if(s===ST.MENU||s===ST.OVER) lives=loadLives(); if(s===ST.SKINS||s===ST.LEADER) viewScroll=0; if(s===ST.HOWTO) howPage=0;
+  // BANNER: oynanışta gizli (PLAY/PAUSE/REVIVE), diğer ekranlarda görünür (native karar verir, reklamsızsa gizler)
+  if(window.Android&&Android.setBanner){ try{ Android.setBanner(!(s===ST.PLAY||s===ST.PAUSE||s===ST.REVIVE)); }catch(e){} } }
 function reset(){ particles.clear();fallers.clear();popups.clear();bullets.clear();
   score=0;displayScore=0;combo=1;bestCombo=1;elapsed=0;spawnTimer=0;difficulty=0;newRecord=false;
   level=1;levelBase=0;levelGoal=goalFor(1);levelUpT=0;mineSeen=false;
