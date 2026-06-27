@@ -330,27 +330,30 @@ function claimDaily(){ const day=nextDailyDay(); if(day<0) return false; const d
 
 /* ===================== PREMIUM KASA (CS:GO tarzı dönen) ===================== */
 const CASE_COST=500;
-const CASE_ITEMS=[   // w = yüzde (toplam 100) — efsane skinler + epikler ağırlıklı
-  {w:3,  type:'skin', val:'unicorn', rarity:'legendary', label:'Tek Boynuz'},
-  {w:3,  type:'skin', val:'samurai', rarity:'legendary', label:'Samuray'},
-  {w:4,  type:'skin', val:'king',    rarity:'legendary', label:'Kral'},
+const CASE_ITEMS=[   // w = yüzde (toplam 100) — PAHALI skinlerin HER BİRİ %5'in ALTINDA
+  {w:2,  type:'skin', val:'unicorn', rarity:'legendary', label:'Tek Boynuz'},
+  {w:2,  type:'skin', val:'samurai', rarity:'legendary', label:'Samuray'},
+  {w:3,  type:'skin', val:'king',    rarity:'legendary', label:'Kral'},
   {w:2,  type:'skin', val:'diamond', rarity:'mythic',    label:'Elmas Kral'},
-  {w:8,  type:'skin', val:'astro',   rarity:'epic',   label:'Astronot'},
-  {w:8,  type:'skin', val:'camo',    rarity:'epic',   label:'Kamuflaj'},
-  {w:8,  type:'skin', val:'robot',   rarity:'epic',   label:'Robot'},
-  {w:8,  type:'skin', val:'wizard',  rarity:'epic',   label:'Büyücü'},
-  {w:7,  type:'skin', val:'devil',   rarity:'epic',   label:'Şeytan'},
-  {w:7,  type:'skin', val:'santa',   rarity:'epic',   label:'Noel Baba'},
-  {w:10, type:'power',val:'fireball',rarity:'epic',   label:'Ateş Topu', n:3},
-  {w:10, type:'power',val:'sonic',   rarity:'epic',   label:'Süper Sonic',n:3},
-  {w:7,  type:'gems', val:3000,      rarity:'mythic', label:'3000 💎'},
-  {w:7,  type:'gems', val:500,       rarity:'common', label:'500 💎'},
-  {w:8,  type:'gems', val:250,       rarity:'common', label:'250 💎'},
+  {w:4,  type:'skin', val:'astro',   rarity:'epic',   label:'Astronot'},
+  {w:4,  type:'skin', val:'camo',    rarity:'epic',   label:'Kamuflaj'},
+  {w:4,  type:'skin', val:'robot',   rarity:'epic',   label:'Robot'},
+  {w:4,  type:'skin', val:'wizard',  rarity:'epic',   label:'Büyücü'},
+  {w:4,  type:'skin', val:'devil',   rarity:'epic',   label:'Şeytan'},
+  {w:4,  type:'skin', val:'santa',   rarity:'epic',   label:'Noel Baba'},
+  {w:12, type:'power',val:'fireball',rarity:'epic',   label:'Ateş Topu', n:3},
+  {w:12, type:'power',val:'sonic',   rarity:'epic',   label:'Süper Sonic',n:3},
+  {w:5,  type:'gems', val:3000,      rarity:'mythic', label:'3000 💎'},
+  {w:19, type:'gems', val:500,       rarity:'common', label:'500 💎'},
+  {w:19, type:'gems', val:250,       rarity:'common', label:'250 💎'},
 ];
 function pickCaseItem(){ let r=Math.random()*100; for(const it of CASE_ITEMS){ r-=it.w; if(r<=0) return it; } return CASE_ITEMS[CASE_ITEMS.length-1]; }
+// KAZANAN seçimi: oyuncuda zaten olan skin TEKRAR GELMEZ (sahipse yeniden çek, hepsi sahipse skin-dışı ödül)
+function pickCaseWin(){ for(let i=0;i<60;i++){ const it=pickCaseItem(); if(it.type==='skin' && ownedSkins.includes(it.val)) continue; return it; }
+  const pool=CASE_ITEMS.filter(it=>it.type!=='skin' || !ownedSkins.includes(it.val)); return pool[Math.floor(Math.random()*pool.length)] || CASE_ITEMS[CASE_ITEMS.length-1]; }
 let caseState=null;
 function openCase(){ if(state===ST.CASE && caseState && !caseState.done) return; if(gems<CASE_COST){ toast('Yetersiz 💎 ('+CASE_COST+')'); return; }
-  addGems(-CASE_COST); const won=pickCaseItem(); const reel=[]; for(let i=0;i<64;i++) reel.push(pickCaseItem());
+  addGems(-CASE_COST); const won=pickCaseWin(); const reel=[]; for(let i=0;i<64;i++) reel.push(pickCaseItem());
   const winIndex=58; reel[winIndex]=won; caseState={reel,winIndex,won,t:0,dur:4.4,done:false,granted:false}; Audio.whoosh&&Audio.whoosh(); goto(ST.CASE); }
 function grantCase(it){ if(caseState.granted) return; caseState.granted=true; Audio.record(); zoomPunch(1.2); shake=Math.max(shake,12);
   if(it.type==='gems') addGems(it.val);
