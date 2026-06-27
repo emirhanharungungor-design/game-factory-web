@@ -158,7 +158,7 @@ function spark(){ // arka plan yıldız tozu (menü/splash)
 }
 
 /* ===================== DURUM ===================== */
-const ST={SPLASH:0,MENU:1,SETTINGS:2,PLAY:3,OVER:4,PAUSE:5,HOWTO:6,REVIVE:7,STORE:8,DAILY:9,CASE:10,SKINS:11};
+const ST={SPLASH:0,MENU:1,SETTINGS:2,PLAY:3,OVER:4,PAUSE:5,HOWTO:6,REVIVE:7,STORE:8,DAILY:9,CASE:10,SKINS:11,POWERS:12};
 let gems=+localStorage.getItem('nc_gems')||0;             // mağaza para birimi (gerçek parayla/promo/reklamla alınır)
 function saveGems(){ localStorage.setItem('nc_gems',gems); }
 function addGems(n){ gems+=n; saveGems(); }
@@ -223,6 +223,9 @@ let pwInv=JSON.parse(localStorage.getItem('nc_pw')||'null');
 if(!pwInv){ pwInv={shield:3,sonic:2,fireball:3,boom:2,fire:3}; localStorage.setItem('nc_pw',JSON.stringify(pwInv)); }  // başlangıç stoğu
 function pwCount(k){ return pwInv[k]||0; }
 function addPower(k,n){ pwInv[k]=Math.max(0,(pwInv[k]||0)+n); localStorage.setItem('nc_pw',JSON.stringify(pwInv)); }
+/* DİREKT SATIN ALMA — bilerek premium fiyat (sandık/kasa/günlük yolundan daha pahalı). */
+const POWER_PRICE={ shield:50, fire:55, boom:60, sonic:70, fireball:75 };
+function buyPower(k){ const p=POWER_PRICE[k]; if(gems<p){ toast('Yetersiz 💎 ('+p+')'); return; } addGems(-p); addPower(k,1); Audio.gold(); toast(POWERS[k].name+' +1  ·  stok '+pwCount(k)); }
 function usePower(k){ if(state!==ST.PLAY) return;
   if(pwCount(k)<=0){ doFlash('255,90,90',0.22); shake=Math.max(shake,6); popup(W/2,H-92,POWERS[k].name+' yok — mağaza','255,120,120',false); buzz([30,40,30]); return; }
   addPower(k,-1); activatePower(k); }
@@ -947,12 +950,13 @@ function render(){
       pricePill(x0+cw0-bh*0.95, ry+bh*0.5, CASE_COST+' 💎', 40, Math.min(13,cw0*0.036));
       BTNS.push({x:x0,y:ry,w:cw0,h:bh,action:openCase}); }
 
-    // ===== ALT SIRA: Skinler · Kalp · Reklam · Promo =====
-    { const opts=[ {ic:'👕',t:'Skinler',s:'Görünüm',hue:285,a:()=>goto(ST.SKINS)},
-                   {ic:'❤️',t:'Kalp',s:'50 💎',hue:348,a:()=>{ if(gems>=50){addGems(-50);addHearts(1);Audio.gold();toast('+1 ❤️');}else toast('Yetersiz 💎'); }},
+    // ===== ALT SIRA: Güçler · Skinler · Kalp · Reklam · Promo =====
+    { const opts=[ {ic:'⚡',t:'Güçler',s:'Satın al',hue:175,a:()=>goto(ST.POWERS)},
+                   {ic:'👕',t:'Skinler',s:'Görünüm',hue:285,a:()=>goto(ST.SKINS)},
+                   {ic:'❤️',t:'Kalp',s:'50💎',hue:348,a:()=>{ if(gems>=50){addGems(-50);addHearts(1);Audio.gold();toast('+1 ❤️');}else toast('Yetersiz 💎'); }},
                    {ic:'📺',t:'Reklam',s:'+25💎',hue:140,a:watchAd},
                    {ic:'🎟️',t:'Promo',s:'Hediye',hue:225,a:redeemPromo} ];
-      const gap=cw0*0.022, cwd=(cw0-3*gap)/4, chh=H*0.092, ry=H*0.675;
+      const gap=cw0*0.018, cwd=(cw0-4*gap)/5, chh=H*0.092, ry=H*0.675;
       opts.forEach((o,i)=>{ const cx=x0+i*(cwd+gap), cxm=cx+cwd/2;
         shelf(cx,ry,cwd,chh,o.hue,o.a,false);
         txt(o.ic,cxm,ry+chh*0.4,Math.min(22,cwd*0.3),'#fff','center');
@@ -1034,6 +1038,31 @@ function render(){
     });
     backChip(ST.STORE);
     if(storeMsgT>0) center(storeMsg, H*0.955, 14, 'rgba(255,235,150,'+clamp(storeMsgT,0,1)+')', 6);
+  }
+  if(state===ST.POWERS){
+    ctx.fillStyle='rgba(4,5,13,0.95)'; ctx.fillRect(0,0,W,H);
+    const ct=(s,x,y,sz,col,al='center')=>{ ctx.save(); ctx.textAlign=al; ctx.font='800 '+sz+"px 'Trebuchet MS'"; ctx.fillStyle=col; ctx.fillText(s,x,y); ctx.restore(); };
+    center('SÜPER GÜÇLER', H*0.068, Math.min(26,W*0.066), '#fff', 12);
+    center('💎 '+gems, H*0.112, Math.min(16,W*0.04), 'rgba(150,246,255,.95)', 6);
+    center('bekleme süresi yok — stoğun kadar kullan', H*0.148, Math.min(12,W*0.032), 'rgba(160,180,220,.8)', 4);
+    const cw0=Math.min(420,W*0.94), x0=W/2-cw0/2, rh=Math.min(86,H*0.105), gp=H*0.016, gy=H*0.185;
+    POWER_KEYS.forEach((k,i)=>{ const P=POWERS[k], ry=gy+i*(rh+gp), n=pwCount(k), price=POWER_PRICE[k];
+      ctx.save(); ctx.shadowColor='rgba('+P.col+',.45)'; ctx.shadowBlur=10; rr(x0,ry,cw0,rh,12);
+      const g=ctx.createLinearGradient(x0,0,x0+cw0,0); g.addColorStop(0,'rgba('+P.col+',.2)'); g.addColorStop(1,'rgba(8,10,22,.95)'); ctx.fillStyle=g; ctx.fill();
+      ctx.shadowBlur=0; ctx.lineWidth=2; ctx.strokeStyle='rgba('+P.col+',.7)'; ctx.stroke(); ctx.restore();
+      ctx.save(); ctx.shadowColor='rgba('+P.col+',.7)'; ctx.shadowBlur=10; powerIcon(k, x0+rh*0.52, ry+rh*0.5, rh*0.26); ctx.restore();
+      ct(P.name, x0+rh*1.0, ry+rh*0.4, Math.min(18,cw0*0.048), 'rgba('+P.col+',1)', 'left');
+      ct(P.desc, x0+rh*1.0, ry+rh*0.72, Math.min(12,cw0*0.03), 'rgba(210,220,250,.85)', 'left');
+      ct('stok '+n, x0+cw0-rh*1.55, ry+rh*0.55, Math.min(13,cw0*0.034), 'rgba(255,225,150,.95)','center');
+      // satın-al hapı
+      const pw=rh*1.05, px=x0+cw0-pw-10, py=ry+rh*0.26, ph=rh*0.48;
+      ctx.save(); ctx.shadowColor='rgba('+P.col+',.6)'; ctx.shadowBlur=8; rr(px,py,pw,ph,ph/2); ctx.fillStyle='rgba('+P.col+',.22)'; ctx.fill();
+      ctx.shadowBlur=0; ctx.lineWidth=1.8; ctx.strokeStyle='rgba('+P.col+',.9)'; ctx.stroke();
+      ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.font='900 '+Math.min(14,pw*0.18)+"px 'Trebuchet MS'"; ctx.fillText('+1 · '+price+'💎', px+pw/2, py+ph*0.65); ctx.restore();
+      BTNS.push({x:x0,y:ry,w:cw0,h:rh,action:()=>buyPower(k)});
+    });
+    backChip(ST.STORE);
+    if(storeMsgT>0) center(storeMsg, H*0.95, 14, 'rgba(255,235,150,'+clamp(storeMsgT,0,1)+')', 6);
   }
   if(state===ST.CASE){
     ctx.fillStyle='rgba(4,5,13,0.96)'; ctx.fillRect(0,0,W,H);
