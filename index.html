@@ -158,7 +158,7 @@ function spark(){ // arka plan yıldız tozu (menü/splash)
 }
 
 /* ===================== DURUM ===================== */
-const ST={SPLASH:0,MENU:1,SETTINGS:2,PLAY:3,OVER:4,PAUSE:5,HOWTO:6,REVIVE:7,STORE:8,DAILY:9,CASE:10,SKINS:11,POWERS:12};
+const ST={SPLASH:0,MENU:1,SETTINGS:2,PLAY:3,OVER:4,PAUSE:5,HOWTO:6,REVIVE:7,STORE:8,DAILY:9,CASE:10,SKINS:11,POWERS:12,LEADER:13,LOGIN:14};
 let gems=+localStorage.getItem('nc_gems')||0;             // mağaza para birimi (gerçek parayla/promo/reklamla alınır)
 function saveGems(){ localStorage.setItem('nc_gems',gems); }
 function addGems(n){ gems+=n; saveGems(); }
@@ -203,10 +203,11 @@ function openChest(key){ const c=CHESTS[key];
 let howtoThenPlay=false;   // kılavuzdan sonra oyuna mı başlanacak (ilk oynayış)
 let howPage=0;             // nasıl oynanır: 0=oynanış, 1=güçler & mağaza
 let dailySeen=false;       // bu oturumda günlük ekranı bir kez otomatik gösterildi mi
-function enterHub(){ if(!dailySeen){ dailySeen=true; if(typeof canClaimDaily==='function' && canClaimDaily()){ goto(ST.DAILY); return; } } goto(ST.MENU); }
+function enterHub(){ if(!account){ goto(ST.LOGIN); return; }   // ilk açılış: giriş/kayıt
+  if(!dailySeen){ dailySeen=true; if(typeof canClaimDaily==='function' && canClaimDaily()){ goto(ST.DAILY); return; } } goto(ST.MENU); }
 /* Kaydırılabilir liste (skin ızgarası gibi) — sürükle/tekerlek ile kaydır, tap pointerup'ta. */
 let viewScroll=0, viewScrollMax=0, dragY=null, dragScroll0=0, dragDist=0;
-function SCROLLABLE(){ return state===ST.SKINS; }
+function SCROLLABLE(){ return state===ST.SKINS||state===ST.LEADER; }
 const LIFE_MS=30*60*1000;  // her can GERÇEK ZAMANDA yarım saatte 1 dolar
 let lives=3, reviveT=0, invuln=0, safeT=0;                 // can / revive geri sayım / dokunulmazlık / güvenli pencere
 let pwShield=0, pwFire=0;   // SADECE aktif etki süreleri (BEKLEME SÜRESİ YOK)
@@ -347,6 +348,41 @@ function grantCase(it){ if(caseState.granted) return; caseState.granted=true; Au
   if(it.type==='gems') addGems(it.val);
   else if(it.type==='power') addPower(it.val,it.n||3);
   else if(it.type==='skin'){ if(ownedSkins.includes(it.val)){ caseState.dupeGems=Math.round(SKINS[it.val].cost*0.4); addGems(caseState.dupeGems); } else { ownSkin(it.val); equipSkin(it.val); } } }
+
+/* ===================== HESAP (giriş / kayıt) ===================== */
+// NOT: yerel demo kimlik. Gerçek Google/Facebook OAuth ve gerçek hesaplar için sunucu + native SDK gerekir.
+let account=JSON.parse(localStorage.getItem('nc_account')||'null');
+function saveAccount(){ if(account) localStorage.setItem('nc_account',JSON.stringify(account)); }
+function playerName(){ return (account&&account.name)?account.name:'Sen'; }
+function signInProvider(prov){   // Google/Facebook — native kanca; web'de test girişi
+  if(window.Android && Android.signIn){ try{ Android.signIn(prov); return; }catch(e){} }
+  const def=prov==='google'?'Google Oyuncu':'Facebook Oyuncu';
+  const nm=((typeof prompt==='function'?prompt((prov==='google'?'Google':'Facebook')+' adın (web testi):',def):def)||def).trim()||def;
+  account={name:nm,provider:prov}; saveAccount(); leaderCache=null; goto(ST.MENU); }
+function usernameAuth(reg){
+  const u=((typeof prompt==='function'?prompt('Kullanıcı adı:'):'')||'').trim(); if(!u) return;
+  const p=((typeof prompt==='function'?prompt('Şifre:'):'')||'').trim(); if(!p) return;
+  const users=JSON.parse(localStorage.getItem('nc_users')||'{}');
+  if(reg){ if(users[u]){ toast('Bu kullanıcı adı alınmış'); return; } users[u]=p; localStorage.setItem('nc_users',JSON.stringify(users)); }
+  else { if(!users[u]||users[u]!==p){ toast('Hatalı kullanıcı adı veya şifre'); return; } }
+  account={name:u,provider:'local'}; saveAccount(); leaderCache=null; goto(ST.MENU); }
+function logout(){ account=null; localStorage.removeItem('nc_account'); leaderCache=null; goto(ST.LOGIN); }
+
+/* ===================== ONLINE SIRALAMA (haftalık · Subway Top Run tarzı) ===================== */
+// Sunucu yok → haftaya göre tohumlanmış (deterministik) rakipler. Gerçek online için backend gerekir.
+const RIVAL_NAMES=['Jeremy','Harish','Whitt','Pawan','Mathew','Rohan','Siddhartha','Mia','Leo','Aria','Kenji','Sofia','Diego','Nora','Omar','Yuki','Lena','Marco','Ivan','Priya','Chen','Ahmet','Zoe','Hugo','Tariq','Elif','Bruno','Nina','Sven','Kael'];
+function srand(seed){ let s=(seed>>>0)||1; return ()=>{ s=(s*1664525+1013904223)>>>0; return s/4294967296; }; }
+let leaderCache=null;
+function leaderData(){ const wk=Math.floor(dayNum()/7);
+  if(leaderCache && leaderCache.wk===wk && leaderCache.best===best && leaderCache.nm===playerName()) return leaderCache;
+  const rnd=srand((wk*2654435761)>>>0), base=Math.max(best,40000), used={}, list=[];
+  for(let i=0;i<15;i++){ let n,guard=0; do{ n=RIVAL_NAMES[Math.floor(rnd()*RIVAL_NAMES.length)]; }while(used[n]&&guard++<40); used[n]=1;
+    list.push({name:n, score:Math.round(base*(0.12+rnd()*1.75)/100)*100, me:false}); }
+  list.push({name:playerName()+' (Sen)', score:best, me:true});
+  list.sort((a,b)=>b.score-a.score);
+  leaderCache={wk,best,nm:playerName(),list}; return leaderCache; }
+const LTIERS=[ {name:'Şampiyon',col:'255,120,40',from:0,to:1}, {name:'Elmas',col:'150,120,255',from:1,to:3}, {name:'Altın',col:'255,200,60',from:3,to:6}, {name:'Gümüş',col:'150,170,200',from:6,to:10}, {name:'Bronz',col:'205,130,80',from:10,to:99} ];
+
 let state=ST.SPLASH, t=0, stateT=0;
 let score=0,displayScore=0,combo=1,bestCombo=1,elapsed=0,spawnTimer=0,difficulty=0;
 let level=1,levelBase=0,levelGoal=300,levelUpT=0,mineSeen=false;   // AŞAMA + vurulamaz mayın
@@ -359,7 +395,7 @@ let evBig=20, evCross=60, evMega=100, crossT=0, crossSpawn=0;   // zamanlı büy
 let player={x:0,y:0,tx:0,r:22,squash:1,sx:1,sy:1,trail:[]};
 resize();
 
-function goto(s){ stateT=0; state=s; if(s===ST.MENU||s===ST.OVER) lives=loadLives(); if(s===ST.SKINS) viewScroll=0; if(s===ST.HOWTO) howPage=0; }
+function goto(s){ stateT=0; state=s; if(s===ST.MENU||s===ST.OVER) lives=loadLives(); if(s===ST.SKINS||s===ST.LEADER) viewScroll=0; if(s===ST.HOWTO) howPage=0; }
 function reset(){ particles.clear();fallers.clear();popups.clear();bullets.clear();
   score=0;displayScore=0;combo=1;bestCombo=1;elapsed=0;spawnTimer=0;difficulty=0;newRecord=false;
   level=1;levelBase=0;levelGoal=goalFor(1);levelUpT=0;mineSeen=false;
@@ -1014,16 +1050,18 @@ function render(){
     center('and', H*0.265, sz*0.42, 'rgba(255,150,205,.95)',12);
     center('FIRST', H*0.33, sz, hsl(GAME.accent,90,68),26);
     ctx.restore();
-    button('▶  OYNA', H*0.50, Math.min(300,W*0.7), 58, ()=>{ if(localStorage.getItem('nc_guide')) startGame(); else { howtoThenPlay=true; goto(ST.HOWTO); } }, 160);
-    button('🎁  GÜNLÜK GİRİŞ', H*0.585, Math.min(300,W*0.7), 50, ()=>goto(ST.DAILY), 95);
-    if(canClaimDaily()){ const bx=W/2+Math.min(150,W*0.35)-10, by=H*0.585-18+6*Math.sin(t*5); ctx.save(); ctx.fillStyle='#ff3b5c'; ctx.shadowColor='rgba(255,60,90,.9)'; ctx.shadowBlur=10; ctx.beginPath(); ctx.arc(bx,by,7,0,7); ctx.fill(); ctx.restore(); }
-    button('🛒  MAĞAZA', H*0.665, Math.min(300,W*0.7), 50, ()=>goto(ST.STORE), 50);
-    button('⚙  AYARLAR', H*0.745, Math.min(300,W*0.7), 46, ()=>goto(ST.SETTINGS), 280);
-    if(best>0) center('rekor '+best+'  ·  aşama '+bestStage+'  ·  kombo x'+bestC, H*0.805, 14,'rgba(150,170,210,.8)',6);
-    drawLives(W/2-29, H*0.875, 16);
+    center((account?('👤 '+playerName()):'misafir'), H*0.40, Math.min(15,W*0.04), 'rgba(180,200,240,.85)', 5);
+    button('▶  OYNA', H*0.475, Math.min(300,W*0.7), 54, ()=>{ if(localStorage.getItem('nc_guide')) startGame(); else { howtoThenPlay=true; goto(ST.HOWTO); } }, 160);
+    button('🏆  SIRALAMA', H*0.555, Math.min(300,W*0.7), 46, ()=>goto(ST.LEADER), 30);
+    button('🎁  GÜNLÜK GİRİŞ', H*0.625, Math.min(300,W*0.7), 46, ()=>goto(ST.DAILY), 95);
+    if(canClaimDaily()){ const bx=W/2+Math.min(150,W*0.35)-10, by=H*0.625-16+6*Math.sin(t*5); ctx.save(); ctx.fillStyle='#ff3b5c'; ctx.shadowColor='rgba(255,60,90,.9)'; ctx.shadowBlur=10; ctx.beginPath(); ctx.arc(bx,by,7,0,7); ctx.fill(); ctx.restore(); }
+    button('🛒  MAĞAZA', H*0.695, Math.min(300,W*0.7), 46, ()=>goto(ST.STORE), 50);
+    button('⚙  AYARLAR', H*0.765, Math.min(300,W*0.7), 44, ()=>goto(ST.SETTINGS), 280);
+    if(best>0) center('rekor '+best+'  ·  aşama '+bestStage+'  ·  kombo x'+bestC, H*0.82, 13,'rgba(150,170,210,.8)',6);
+    drawLives(W/2-26, H*0.88, 15);
     if(lives<3){ const ms=nextLifeMs(), mm=Math.floor(ms/60000), ss=Math.floor((ms%60000)/1000);
-      center('sonraki can '+mm+':'+(ss<10?'0':'')+ss, H*0.925, 13, 'rgba(255,150,160,.85)', 4); }
-    else center('canlar dolu', H*0.925, 13, 'rgba(150,255,180,.7)', 4);
+      center('sonraki can '+mm+':'+(ss<10?'0':'')+ss, H*0.93, 12, 'rgba(255,150,160,.85)', 4); }
+    else center('canlar dolu', H*0.93, 12, 'rgba(150,255,180,.7)', 4);
   }
   if(state===ST.SETTINGS){
     center('AYARLAR', H*0.22, Math.min(46,W*0.11), '#fff', 14);
@@ -1031,8 +1069,10 @@ function render(){
     toggleRow('🔊  Efektler', Settings.sfx, H*0.4+86, ()=>{Settings.sfx=!Settings.sfx;Audio.setSfx(Settings.sfx);saveSettings();});
     toggleRow('📳  Titreşim', Settings.haptics, H*0.4+172, ()=>{Settings.haptics=!Settings.haptics;saveSettings();buzz(20);});
     center('titreşim sadece Android · iPhone desteklemiyor', H*0.4+230, 12,'rgba(140,160,200,.7)',4);
-    button('❔  NASIL OYNANIR', H*0.72, Math.min(300,W*0.72), 54, ()=>{ howtoThenPlay=false; goto(ST.HOWTO); }, 190);
-    button('←  GERİ', H*0.84, Math.min(220,W*0.6), 52, ()=>goto(ST.MENU), 200);
+    center((account?('👤 '+playerName()+(account.provider&&account.provider!=='guest'?'  ('+account.provider+')':'')):'misafir'), H*0.66, Math.min(14,W*0.037), 'rgba(180,200,240,.85)', 4);
+    button('❔  NASIL OYNANIR', H*0.71, Math.min(300,W*0.72), 50, ()=>{ howtoThenPlay=false; goto(ST.HOWTO); }, 190);
+    button(account&&account.provider!=='guest'?'🚪  Çıkış Yap':'🔑  Giriş Yap', H*0.785, Math.min(300,W*0.72), 46, ()=>{ if(account&&account.provider!=='guest') logout(); else goto(ST.LOGIN); }, 0);
+    button('←  GERİ', H*0.86, Math.min(220,W*0.6), 48, ()=>goto(ST.MENU), 200);
   }
   if(state===ST.HOWTO) renderHowto();
   if(state===ST.STORE){
@@ -1251,6 +1291,58 @@ function render(){
       }
     }
     if(storeMsgT>0) center(storeMsg, H*0.95, 13, 'rgba(255,235,150,'+clamp(storeMsgT,0,1)+')', 6);
+  }
+  if(state===ST.LOGIN){
+    ctx.fillStyle='rgba(4,5,13,0.96)'; ctx.fillRect(0,0,W,H);
+    const ap=easeOutBack(clamp(stateT/0.5,0,1)); ctx.save(); ctx.translate(W/2,H*0.26); ctx.scale(ap,ap); ctx.translate(-W/2,-H*0.26);
+    const sz=Math.min(46,W*0.108); center('FLORENTIA', H*0.20, sz, hsl(190,90,65),24); center('and', H*0.255, sz*0.42, 'rgba(255,150,205,.95)',12); center('FIRST', H*0.31, sz, hsl(320,90,68),24); ctx.restore();
+    center('GİRİŞ YAP', H*0.40, Math.min(20,W*0.05), 'rgba(200,215,250,.9)', 6);
+    button('  Google ile Giriş', H*0.475, Math.min(320,W*0.82), 52, ()=>signInProvider('google'), 8);
+    button('  Facebook ile Giriş', H*0.555, Math.min(320,W*0.82), 52, ()=>signInProvider('facebook'), 215);
+    // sağlayıcı rozetleri (G / f)
+    ctx.save(); ctx.textAlign='center'; ctx.font="900 22px 'Trebuchet MS'";
+    ctx.fillStyle='#ea4335'; ctx.fillText('G', W/2-Math.min(160,W*0.41)+30, H*0.475+8);
+    ctx.fillStyle='#1877f2'; ctx.fillText('f', W/2-Math.min(160,W*0.41)+30, H*0.555+8); ctx.restore();
+    button('👤  Kullanıcı Adı ile Giriş', H*0.645, Math.min(320,W*0.82), 50, ()=>usernameAuth(false), 175);
+    button('✎  Kaydol', H*0.72, Math.min(260,W*0.66), 46, ()=>usernameAuth(true), 140);
+    button('Misafir olarak devam', H*0.80, Math.min(230,W*0.58), 40, ()=>{ account={name:'Misafir',provider:'guest'}; saveAccount(); enterHub(); }, 230);
+    center('Google/Facebook girişi Android sürümünde gerçektir;', H*0.875, Math.min(11,W*0.029), 'rgba(140,160,200,.7)', 3);
+    center('web önizlemede test amaçlıdır.', H*0.90, Math.min(11,W*0.029), 'rgba(140,160,200,.7)', 3);
+    if(storeMsgT>0) center(storeMsg, H*0.95, 13, 'rgba(255,235,150,'+clamp(storeMsgT,0,1)+')', 6);
+  }
+  if(state===ST.LEADER){
+    ctx.fillStyle='rgba(4,5,13,0.96)'; ctx.fillRect(0,0,W,H);
+    const d=leaderData(), daysLeft=7-(dayNum()%7);
+    center('🏆  EN İYİLER', H*0.058, Math.min(26,W*0.066), '#fff', 12);
+    center('🇺🇸  Hafta '+(d.wk%100)+'  ·  '+daysLeft+' gün kaldı', H*0.103, Math.min(14,W*0.037), 'rgba(150,200,255,.9)', 5);
+    const top=H*0.15, bot=H*0.93, hH=Math.min(38,H*0.046), rH=Math.min(46,H*0.056), gp=5;
+    // satırları kur
+    const rows=[]; LTIERS.forEach(T=>{ rows.push({tier:T}); const seg=d.list.slice(T.from,Math.min(T.to,d.list.length)); seg.forEach((p,idx)=>rows.push({player:p,rank:T.from+idx})); });
+    let yacc=0; rows.forEach(r=>{ r.y=yacc; r.h=(r.tier?hH:rH); yacc+=r.h+gp; });
+    viewScrollMax=Math.max(0,yacc-(bot-top)); viewScroll=clamp(viewScroll,0,viewScrollMax);
+    const cw0=Math.min(420,W*0.94), x0=W/2-cw0/2;
+    ctx.save(); ctx.beginPath(); ctx.rect(0,top,W,bot-top); ctx.clip();
+    rows.forEach(r=>{ const yy=top+r.y-viewScroll; if(yy+r.h<top-2||yy>bot+2) return;
+      if(r.tier){ const T=r.tier; ctx.save(); ctx.shadowColor='rgba('+T.col+',.5)'; ctx.shadowBlur=8; rr(x0,yy,cw0,r.h,8);
+        const g=ctx.createLinearGradient(x0,0,x0+cw0,0); g.addColorStop(0,'rgba('+T.col+',.85)'); g.addColorStop(1,'rgba('+T.col+',.35)'); ctx.fillStyle=g; ctx.fill(); ctx.shadowBlur=0;
+        ctx.textAlign='left'; ctx.font='900 '+Math.min(18,r.h*0.5)+"px 'Trebuchet MS'"; ctx.fillStyle='#fff'; ctx.fillText(T.name, x0+14, yy+r.h*0.68);
+        // hediye ikonu
+        ctx.font='900 '+Math.min(18,r.h*0.5)+"px 'Trebuchet MS'"; ctx.textAlign='right'; ctx.fillText('🎁', x0+cw0-14, yy+r.h*0.7); ctx.restore();
+      } else { const p=r.player; ctx.save(); rr(x0,yy,cw0,r.h,8);
+        ctx.fillStyle=p.me?'rgba(40,80,130,.85)':'rgba(22,28,48,.8)'; ctx.fill(); ctx.lineWidth=p.me?2:1; ctx.strokeStyle=p.me?'rgba(120,200,255,.9)':'rgba(60,80,130,.5)'; ctx.stroke();
+        // sıra no
+        ctx.textAlign='center'; ctx.font='800 '+Math.min(14,r.h*0.36)+"px 'Trebuchet MS'"; ctx.fillStyle='rgba(170,190,230,.8)'; ctx.fillText('#'+(r.rank+1), x0+22, yy+r.h*0.62);
+        // avatar
+        if(p.me){ drawAvatar(equippedSkin, x0+58, yy+r.h*0.5, r.h*0.32); }
+        else { ctx.beginPath(); ctx.arc(x0+58, yy+r.h*0.5, r.h*0.32,0,7); ctx.fillStyle=hsl((p.name.charCodeAt(0)*37)%360,60,45); ctx.fill(); ctx.fillStyle='#fff'; ctx.font='900 '+Math.min(16,r.h*0.4)+"px 'Trebuchet MS'"; ctx.fillText(p.name[0], x0+58, yy+r.h*0.6); }
+        ctx.textAlign='left'; ctx.font=(p.me?'900 ':'800 ')+Math.min(17,r.h*0.42)+"px 'Trebuchet MS'"; ctx.fillStyle=p.me?'#cfeaff':'#e6ecfb'; ctx.fillText(p.name, x0+82, yy+r.h*0.62);
+        ctx.textAlign='right'; ctx.font='900 '+Math.min(17,r.h*0.42)+"px 'Trebuchet MS'"; ctx.fillStyle=p.me?'#9fe0ff':'#cdd8f5'; ctx.fillText(p.score.toLocaleString('tr-TR'), x0+cw0-14, yy+r.h*0.62); ctx.restore();
+      }
+    });
+    ctx.restore();
+    if(viewScrollMax>0){ const tr=bot-top, th=Math.max(28,tr*tr/yacc), ty=top+(tr-th)*(viewScroll/viewScrollMax); ctx.save(); ctx.fillStyle='rgba(120,160,230,.5)'; rr(W-7,ty,4,th,2); ctx.fill(); ctx.restore(); }
+    backChip(ST.MENU);
+    center('skorun her oyunda güncellenir · haftalık sıfırlanır', H*0.965, Math.min(11,W*0.029), 'rgba(150,170,210,.7)', 3);
   }
   if(state===ST.PLAY||state===ST.PAUSE){
     ctx.save();ctx.textAlign='left';ctx.font="900 54px 'Trebuchet MS'";ctx.fillStyle='#fff';
