@@ -195,6 +195,7 @@ window.grantGems=function(n){ n=+n||0; if(n>0){ addGems(n); Audio.gold&&Audio.go
 window.rewardGems=function(n){   // ödüllü reklam izlendi — teklif ekranındaysa ödül +1 KALP olur
   if(state===ST.OFFER){ addHearts(1); Audio.gold&&Audio.gold(); toast('+1 ❤️ (reklam)'); revive(); return; }
   n=+n||25; addGems(n); Audio.gold&&Audio.gold(); toast('+'+n+' 💎 (reklam)'); };
+window.adUnavailable=function(){ toast('Reklam şu an hazır değil — birazdan tekrar dene'); buzz&&buzz(15); };   // native: reklam dolmadıysa çağırır
 /* Teklif ekranı: elmasla kalp al ve kaldığın yerden devam et */
 function offerBuyHeart(){ if(gems>=50){ addGems(-50); addHearts(1); Audio.gold(); toast('+1 ❤️'); revive(); }
   else { toast('Yetersiz 💎 — reklam izle ya da paket al'); } }
@@ -1043,7 +1044,11 @@ function drawLives(x,y,s){ for(let i=0;i<3;i++) drawHeart(x+i*(s+8), y, s, i<liv
 function button(label,cy,w,h,action,accent){ const x=W/2-w/2,y=cy-h/2,fl=0.5+0.5*Math.sin(t*4);
   ctx.save(); ctx.shadowColor=hsl(accent,90,60,.7);ctx.shadowBlur=16; rr(x,y,w,h,h/2);
   ctx.fillStyle=hsl(accent,70,12); ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle=hsl(accent,90,60,.6+0.4*fl); ctx.stroke();
-  ctx.shadowBlur=0; ctx.textAlign='center'; ctx.font=`900 ${Math.min(26,h*0.42)}px 'Trebuchet MS'`; ctx.fillStyle=hsl(accent,90,75); ctx.fillText(label,W/2,cy+h*0.15);
+  ctx.shadowBlur=0; ctx.textAlign='center';
+  // yazıyı butona SIĞDIR: taşıyorsa fontu küçült (taşma hatası düzeltmesi)
+  let fs=Math.min(26,h*0.42); ctx.font=`900 ${fs}px 'Trebuchet MS'`;
+  const maxW=w-h*0.7; while(fs>9 && ctx.measureText(label).width>maxW){ fs-=1; ctx.font=`900 ${fs}px 'Trebuchet MS'`; }
+  ctx.fillStyle=hsl(accent,90,75); ctx.fillText(label,W/2,cy+fs*0.35);
   ctx.restore(); BTNS.push({x,y,w,h,action}); }
 function toggleRow(label,val,cy,action){ const w=Math.min(420,W*0.82),x=W/2-w/2,h=64,y=cy-h/2;
   ctx.save(); rr(x,y,w,h,16); ctx.fillStyle='rgba(20,28,55,.6)'; ctx.fill(); ctx.lineWidth=1; ctx.strokeStyle='rgba(60,80,140,.6)'; ctx.stroke();
@@ -1102,7 +1107,7 @@ function render(){
     ctx.restore();
     center((account?('👤 '+playerName()):'misafir'), H*0.40, Math.min(15,W*0.04), 'rgba(180,200,240,.85)', 5);
     button('▶  OYNA', H*0.475, Math.min(300,W*0.7), 54, ()=>{ if(localStorage.getItem('nc_guide')) startGame(); else { howtoThenPlay=true; goto(ST.HOWTO); } }, 160);
-    button('🏆  SIRALAMA', H*0.555, Math.min(300,W*0.7), 46, ()=>{ if(window.Android&&Android.showLeaderboard){ try{Android.showLeaderboard();return;}catch(e){} } goto(ST.LEADER); }, 30);
+    button('🏆  SIRALAMA', H*0.555, Math.min(300,W*0.7), 46, ()=>{ let h=false; if(window.Android&&Android.showLeaderboard){ try{ h=(Android.showLeaderboard()===true); }catch(e){} } if(!h) goto(ST.LEADER); }, 30);
     button('🎁  GÜNLÜK GİRİŞ', H*0.625, Math.min(300,W*0.7), 46, ()=>goto(ST.DAILY), 95);
     if(canClaimDaily()){ const bx=W/2+Math.min(150,W*0.35)-10, by=H*0.625-16+6*Math.sin(t*5); ctx.save(); ctx.fillStyle='#ff3b5c'; ctx.shadowColor='rgba(255,60,90,.9)'; ctx.shadowBlur=10; ctx.beginPath(); ctx.arc(bx,by,7,0,7); ctx.fill(); ctx.restore(); }
     button('🛒  MAĞAZA', H*0.695, Math.min(300,W*0.7), 46, ()=>goto(ST.STORE), 50);
@@ -1473,11 +1478,12 @@ function render(){
     // kırık kalp görseli (boş 3 kalp)
     drawLives(W/2-29, H*0.335, 17);
     center('kaldığın yerden devam etmek için:', H*0.41, Math.min(14,W*0.037), 'rgba(255,180,190,.9)', 5);
-    button('❤️  KALP AL — 50 💎   ('+gems+' 💎 var)', H*0.49, Math.min(330,W*0.84), 58, offerBuyHeart, 348);
-    button('📺  REKLAM İZLE  →  +1 ❤️', H*0.58, Math.min(330,W*0.84), 58, offerWatchAd, 140);
-    button('💎  Elmas Paketleri', H*0.665, Math.min(250,W*0.62), 44, ()=>goto(ST.STORE), 198);
-    center('her kalp ½ saatte bir kendiliğinden dolar', H*0.735, Math.min(12,W*0.031), 'rgba(150,170,210,.75)', 4);
-    if(storeMsgT>0) center(storeMsg, H*0.79, 14, 'rgba(255,235,150,'+clamp(storeMsgT,0,1)+')', 6);
+    center('💎 '+gems, H*0.455, Math.min(16,W*0.042), 'rgba(150,246,255,.95)', 6);
+    button('❤️  KALP AL — 50 💎', H*0.51, Math.min(330,W*0.84), 56, offerBuyHeart, 348);
+    button('📺  REKLAM İZLE → +1 ❤️', H*0.595, Math.min(330,W*0.84), 56, offerWatchAd, 140);
+    button('💎  Elmas Paketleri', H*0.675, Math.min(250,W*0.62), 44, ()=>goto(ST.STORE), 198);
+    center('her kalp ½ saatte bir kendiliğinden dolar', H*0.74, Math.min(12,W*0.031), 'rgba(150,170,210,.75)', 4);
+    if(storeMsgT>0) center(storeMsg, H*0.795, 14, 'rgba(255,235,150,'+clamp(storeMsgT,0,1)+')', 6);
     // ✕ — 5 saniye sonra belirir (sağ üst)
     if(stateT>5){ const r=Math.min(20,W*0.052), x=W-r-15, y=r+15, a=clamp((stateT-5)/0.5,0,1);
       ctx.save(); ctx.globalAlpha=a; ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fillStyle='rgba(20,26,46,.92)'; ctx.fill();
@@ -1504,7 +1510,7 @@ function render(){
         button('☰  MENÜ', H*0.84, Math.min(240,W*0.6), 44, ()=>goto(ST.MENU), 280);
       } else {
         button('▶  TEKRAR', H*0.715, Math.min(280,W*0.66), 56, startGame, 160);
-        button('🏆  SIRALAMA', H*0.79, Math.min(280,W*0.66), 46, ()=>{ if(window.Android&&Android.showLeaderboard){ try{Android.showLeaderboard();}catch(e){} } else goto(ST.LEADER); }, 30);
+        button('🏆  SIRALAMA', H*0.79, Math.min(280,W*0.66), 46, ()=>{ let h=false; if(window.Android&&Android.showLeaderboard){ try{ h=(Android.showLeaderboard()===true); }catch(e){} } if(!h) goto(ST.LEADER); }, 30);
         button('☰  MENÜ', H*0.86, Math.min(280,W*0.66), 46, ()=>goto(ST.MENU), 280);
       }
     }
