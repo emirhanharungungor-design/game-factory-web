@@ -376,18 +376,11 @@ function grantCase(it){ if(caseState.granted) return; caseState.granted=true; Au
 let account=JSON.parse(localStorage.getItem('nc_account')||'null');
 function saveAccount(){ if(account) localStorage.setItem('nc_account',JSON.stringify(account)); }
 function playerName(){ return (account&&account.name)?account.name:'Sen'; }
-function signInProvider(prov){   // Google/Facebook — native kanca; web'de test girişi
-  if(window.Android && Android.signIn){ try{ Android.signIn(prov); return; }catch(e){} }
-  const def=prov==='google'?'Google Oyuncu':'Facebook Oyuncu';
-  const nm=((typeof prompt==='function'?prompt((prov==='google'?'Google':'Facebook')+' adın (web testi):',def):def)||def).trim()||def;
-  account={name:nm,provider:prov}; saveAccount(); leaderCache=null; goto(ST.MENU); }
-function usernameAuth(reg){
-  const u=((typeof prompt==='function'?prompt('Kullanıcı adı:'):'')||'').trim(); if(!u) return;
-  const p=((typeof prompt==='function'?prompt('Şifre:'):'')||'').trim(); if(!p) return;
-  const users=JSON.parse(localStorage.getItem('nc_users')||'{}');
-  if(reg){ if(users[u]){ toast('Bu kullanıcı adı alınmış'); return; } users[u]=p; localStorage.setItem('nc_users',JSON.stringify(users)); }
-  else { if(!users[u]||users[u]!==p){ toast('Hatalı kullanıcı adı veya şifre'); return; } }
-  account={name:u,provider:'local'}; saveAccount(); leaderCache=null; goto(ST.MENU); }
+function nicknameAuth(){   // HESAP YOK: sadece yerel takma ad (bu cihazda saklanır)
+  const cur=(account&&account.name&&account.provider!=='guest')?account.name:'';
+  const nm=((typeof prompt==='function'?prompt('Takma adın (sıralamada görünür):',cur||'Oyuncu'):'')||'').trim();
+  if(!nm) return;
+  account={name:nm.slice(0,14),provider:'local'}; saveAccount(); leaderCache=null; Audio.gold&&Audio.gold(); enterHub(); }
 function logout(){ account=null; localStorage.removeItem('nc_account'); leaderCache=null; goto(ST.LOGIN); }
 
 /* ===================== ONLINE SIRALAMA (haftalık · Subway Top Run tarzı) ===================== */
@@ -1121,7 +1114,7 @@ function render(){
     center('titreşim sadece Android · iPhone desteklemiyor', H*0.4+230, 12,'rgba(140,160,200,.7)',4);
     center((account?('👤 '+playerName()+(account.provider&&account.provider!=='guest'?'  ('+account.provider+')':'')):'misafir'), H*0.66, Math.min(14,W*0.037), 'rgba(180,200,240,.85)', 4);
     button('❔  NASIL OYNANIR', H*0.71, Math.min(300,W*0.72), 50, ()=>{ howtoThenPlay=false; goto(ST.HOWTO); }, 190);
-    button(account&&account.provider!=='guest'?'🚪  Çıkış Yap':'🔑  Giriş Yap', H*0.785, Math.min(300,W*0.72), 46, ()=>{ if(account&&account.provider!=='guest') logout(); else goto(ST.LOGIN); }, 0);
+    button('✎  Takma Ad Değiştir', H*0.785, Math.min(300,W*0.72), 46, ()=>nicknameAuth(), 0);
     button('←  GERİ', H*0.86, Math.min(220,W*0.6), 48, ()=>goto(ST.MENU), 200);
   }
   if(state===ST.HOWTO) renderHowto();
@@ -1358,18 +1351,11 @@ function render(){
     ctx.fillStyle='rgba(4,5,13,0.96)'; ctx.fillRect(0,0,W,H);
     const ap=easeOutBack(clamp(stateT/0.5,0,1)); ctx.save(); ctx.translate(W/2,H*0.26); ctx.scale(ap,ap); ctx.translate(-W/2,-H*0.26);
     const sz=Math.min(46,W*0.108); center('FLORENTIA', H*0.20, sz, hsl(190,90,65),24); center('and', H*0.255, sz*0.42, 'rgba(255,150,205,.95)',12); center('FIRST', H*0.31, sz, hsl(320,90,68),24); ctx.restore();
-    center('GİRİŞ YAP', H*0.40, Math.min(20,W*0.05), 'rgba(200,215,250,.9)', 6);
-    button('  Google ile Giriş', H*0.475, Math.min(320,W*0.82), 52, ()=>signInProvider('google'), 8);
-    button('  Facebook ile Giriş', H*0.555, Math.min(320,W*0.82), 52, ()=>signInProvider('facebook'), 215);
-    // sağlayıcı rozetleri (G / f)
-    ctx.save(); ctx.textAlign='center'; ctx.font="900 22px 'Trebuchet MS'";
-    ctx.fillStyle='#ea4335'; ctx.fillText('G', W/2-Math.min(160,W*0.41)+30, H*0.475+8);
-    ctx.fillStyle='#1877f2'; ctx.fillText('f', W/2-Math.min(160,W*0.41)+30, H*0.555+8); ctx.restore();
-    button('👤  Kullanıcı Adı ile Giriş', H*0.645, Math.min(320,W*0.82), 50, ()=>usernameAuth(false), 175);
-    button('✎  Kaydol', H*0.72, Math.min(260,W*0.66), 46, ()=>usernameAuth(true), 140);
-    button('Misafir olarak devam', H*0.80, Math.min(230,W*0.58), 40, ()=>{ account={name:'Misafir',provider:'guest'}; saveAccount(); enterHub(); }, 230);
-    center('Google/Facebook girişi Android sürümünde gerçektir;', H*0.875, Math.min(11,W*0.029), 'rgba(140,160,200,.7)', 3);
-    center('web önizlemede test amaçlıdır.', H*0.90, Math.min(11,W*0.029), 'rgba(140,160,200,.7)', 3);
+    center('OYUNCU ADINI SEÇ', H*0.42, Math.min(20,W*0.05), 'rgba(200,215,250,.9)', 6);
+    center('sıralama tablosunda bu ad görünür', H*0.465, Math.min(13,W*0.034), 'rgba(150,170,210,.75)', 4);
+    button('✎  TAKMA AD YAZ', H*0.55, Math.min(320,W*0.82), 56, ()=>nicknameAuth(), 175);
+    button('Misafir olarak devam', H*0.645, Math.min(250,W*0.62), 44, ()=>{ account={name:'Misafir',provider:'guest'}; saveAccount(); enterHub(); }, 230);
+    center('hesap gerekmez — adın yalnızca bu cihazda saklanır', H*0.73, Math.min(11,W*0.029), 'rgba(140,160,200,.7)', 3);
     if(storeMsgT>0) center(storeMsg, H*0.95, 13, 'rgba(255,235,150,'+clamp(storeMsgT,0,1)+')', 6);
   }
   if(state===ST.LEADER){
