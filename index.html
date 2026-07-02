@@ -158,7 +158,7 @@ function spark(){ // arka plan yıldız tozu (menü/splash)
 }
 
 /* ===================== DURUM ===================== */
-const ST={SPLASH:0,MENU:1,SETTINGS:2,PLAY:3,OVER:4,PAUSE:5,HOWTO:6,REVIVE:7,STORE:8,DAILY:9,CASE:10,SKINS:11,POWERS:12,LEADER:13,LOGIN:14};
+const ST={SPLASH:0,MENU:1,SETTINGS:2,PLAY:3,OVER:4,PAUSE:5,HOWTO:6,REVIVE:7,STORE:8,DAILY:9,CASE:10,SKINS:11,POWERS:12,LEADER:13,LOGIN:14,OFFER:15};
 let gems=+localStorage.getItem('nc_gems')||0;             // mağaza para birimi (gerçek parayla/promo/reklamla alınır)
 function saveGems(){ localStorage.setItem('nc_gems',gems); }
 function addGems(n){ gems+=n; saveGems(); }
@@ -192,7 +192,14 @@ function buyNoAds(){ if(noAds){ toast('Reklamsız zaten aktif ✓'); return; }
   grantNoAds(); Audio.gold&&Audio.gold(); toast('Reklamlar kaldırıldı (web test) ✓'); }
 try{ if(window.Android&&Android.hasNoAds&&Android.hasNoAds()){ grantNoAds(); } }catch(e){}   // cihazda zaten alınmışsa geri yükle
 window.grantGems=function(n){ n=+n||0; if(n>0){ addGems(n); Audio.gold&&Audio.gold(); toast('+'+n+' 💎 ✓'); } };   // Play Billing gems satın alma başarılı
-window.rewardGems=function(n){ n=+n||25; addGems(n); Audio.gold&&Audio.gold(); toast('+'+n+' 💎 (reklam)'); };   // ödüllü reklam izlendi
+window.rewardGems=function(n){   // ödüllü reklam izlendi — teklif ekranındaysa ödül +1 KALP olur
+  if(state===ST.OFFER){ addHearts(1); Audio.gold&&Audio.gold(); toast('+1 ❤️ (reklam)'); revive(); return; }
+  n=+n||25; addGems(n); Audio.gold&&Audio.gold(); toast('+'+n+' 💎 (reklam)'); };
+/* Teklif ekranı: elmasla kalp al ve kaldığın yerden devam et */
+function offerBuyHeart(){ if(gems>=50){ addGems(-50); addHearts(1); Audio.gold(); toast('+1 ❤️'); revive(); }
+  else { toast('Yetersiz 💎 — reklam izle ya da paket al'); } }
+function offerWatchAd(){ if(window.Android&&Android.rewardedAd){ try{ Android.rewardedAd(); }catch(e){} return; }
+  window.rewardGems(0); }   // web testi: doğrudan +1 kalp + devam
 function showDeathAd(){ if(noAds) return; if(window.Android&&Android.gameOver){ try{ Android.gameOver(); }catch(e){} } }   // ÖLÜNCE geçiş reklamı (reklamsızda gösterme)
 /* SÜRPRİZ SANDIKLAR — ekonomi-güvenli: beklenen değer ≈ maliyetin biraz altı, küçük jackpot şansı */
 const CHESTS={
@@ -381,7 +388,6 @@ function nicknameAuth(){   // HESAP YOK: sadece yerel takma ad (bu cihazda sakla
   const nm=((typeof prompt==='function'?prompt('Takma adın (sıralamada görünür):',cur||'Oyuncu'):'')||'').trim();
   if(!nm) return;
   account={name:nm.slice(0,14),provider:'local'}; saveAccount(); leaderCache=null; Audio.gold&&Audio.gold(); enterHub(); }
-function logout(){ account=null; localStorage.removeItem('nc_account'); leaderCache=null; goto(ST.LOGIN); }
 
 /* ===================== ONLINE SIRALAMA (haftalık · Subway Top Run tarzı) ===================== */
 // Sunucu yok → haftaya göre tohumlanmış (deterministik) rakipler. Gerçek online için backend gerekir.
@@ -528,7 +534,8 @@ function die(){
   Audio.hit(); shake=Math.max(shake,28); doFlash('255,60,90',0.8); hitstop=0.12;
   burst(player.x,player.y,'255,70,110',40,900,0.9); buzz([40,30,80]);
   lives=loadLives();
-  if(lives>0){ reviveT=10; goto(ST.REVIVE); } else gameOver();
+  if(lives>0){ reviveT=10; goto(ST.REVIVE); }
+  else goto(ST.OFFER);   // kalpler bitti → teklif ekranı (kalp al / reklam izle / ✕ 5sn sonra)
 }
 function revive(){
   spendLife(); invuln=3.6; safeT=2.6;                   // uzun dokunulmazlık + 2.6sn yeni tehlike YOK (kaçacak yer kalsın)
@@ -1458,6 +1465,26 @@ function render(){
     const frac=clamp(reviveT/10,0,1);
     center(Math.ceil(reviveT)+' sn', H*0.74, Math.min(40,W*0.1), hsl(frac*120,90,60), 12);
     button('☰  VAZGEÇ', H*0.86, Math.min(230,W*0.58), 50, gameOver, 0);
+  }
+  if(state===ST.OFFER){   // KALPLER BİTTİ → kalp al / reklam izle / (5sn sonra ✕)
+    ctx.fillStyle='rgba(5,6,15,0.9)'; ctx.fillRect(0,0,W,H);
+    center('KALPLERİN BİTTİ!', H*0.20, Math.min(34,W*0.085), '#fff', 16);
+    center('skorun: '+score+'  ·  aşama '+level, H*0.26, Math.min(15,W*0.04), 'rgba(200,210,240,.9)', 6);
+    // kırık kalp görseli (boş 3 kalp)
+    drawLives(W/2-29, H*0.335, 17);
+    center('kaldığın yerden devam etmek için:', H*0.41, Math.min(14,W*0.037), 'rgba(255,180,190,.9)', 5);
+    button('❤️  KALP AL — 50 💎   ('+gems+' 💎 var)', H*0.49, Math.min(330,W*0.84), 58, offerBuyHeart, 348);
+    button('📺  REKLAM İZLE  →  +1 ❤️', H*0.58, Math.min(330,W*0.84), 58, offerWatchAd, 140);
+    button('💎  Elmas Paketleri', H*0.665, Math.min(250,W*0.62), 44, ()=>goto(ST.STORE), 198);
+    center('her kalp ½ saatte bir kendiliğinden dolar', H*0.735, Math.min(12,W*0.031), 'rgba(150,170,210,.75)', 4);
+    if(storeMsgT>0) center(storeMsg, H*0.79, 14, 'rgba(255,235,150,'+clamp(storeMsgT,0,1)+')', 6);
+    // ✕ — 5 saniye sonra belirir (sağ üst)
+    if(stateT>5){ const r=Math.min(20,W*0.052), x=W-r-15, y=r+15, a=clamp((stateT-5)/0.5,0,1);
+      ctx.save(); ctx.globalAlpha=a; ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fillStyle='rgba(20,26,46,.92)'; ctx.fill();
+      ctx.lineWidth=2; ctx.strokeStyle='rgba(200,120,130,.85)'; ctx.stroke();
+      ctx.strokeStyle='#e8cdd2'; ctx.lineWidth=2.5; ctx.beginPath(); ctx.moveTo(x-r*0.38,y-r*0.38); ctx.lineTo(x+r*0.38,y+r*0.38); ctx.moveTo(x+r*0.38,y-r*0.38); ctx.lineTo(x-r*0.38,y+r*0.38); ctx.stroke(); ctx.restore();
+      BTNS.push({x:x-r,y:y-r,w:r*2,h:r*2,action:gameOver}); }
+    else center('✕ '+Math.ceil(5-stateT)+' sn sonra', H*0.97, 11, 'rgba(150,170,210,.5)', 3);
   }
   if(state===ST.OVER){
     ctx.fillStyle='rgba(5,6,15,0.55)';ctx.fillRect(0,0,W,H);
